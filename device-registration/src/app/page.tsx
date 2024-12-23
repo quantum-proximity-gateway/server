@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Input, Stack } from "@chakra-ui/react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import '@fontsource/ibm-plex-sans';
 import axios from 'axios';
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -12,14 +12,14 @@ export default function Home() {
   const [password, setPassword] = useState("");
 
   function handleRegister() {
-    console.log(API_URL);
     axios.post(`${API_URL}/register`, {
       macAddress,
       username,
       password
     }).then((res) => {
-      console.log(res.data);
+      alert("Device registered successfully");
     }).catch((err) => {
+      alert("Failed to register device");
       console.error(err);
     });
   }
