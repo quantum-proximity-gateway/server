@@ -20,7 +20,7 @@ def validateKey():
     mac_address = data['macAddress']
     key = data['key']
     # validate key here
-    return jsonify(data)
+    return jsonify(data) # return username and password if key is valid
 
 @app.route('/regenKey', methods=['GET'])
 def regenKey():
@@ -29,7 +29,21 @@ def regenKey():
     # regen key here
     return jsonify(data)
 
+@app.route('/retrievePreferences', methods=['GET'])
+def retrievePreferences():
+    data = request.get_json()
+    mac_address = data['macAddress']
+    # retrieve preferences here
+    return jsonify(data)
 
+
+@app.route('/updatePreferences', methods=['POST'])
+def updatePreferences():
+    data = request.get_json()
+    mac_address = data['macAddress']
+    preferences = data['preferences']
+    # update preferences here
+    return jsonify(data)
 
 
 if __name__ == '__main__':
