@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-
+import sqlite3
 app = Flask(__name__)
 CORS(app)
 
@@ -64,4 +64,9 @@ def updatePreferences():
 
 
 if __name__ == '__main__':
+    connection = sqlite3.connect('backend/database.db') # Connect to database
+    with open('backend/schema.sql') as f: # Read schema from file and make sure tables are created
+        connection.executescript(f.read())
+    connection.close()
     app.run(debug=True)
+    
