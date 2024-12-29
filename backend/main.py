@@ -4,12 +4,28 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
+'''
+Tables for DB:
+Devices
+    mac_address (primary key)
+    username (varchar)
+    password (varchar)
+    key (varchar)
+Preferences
+    mac_address (foreign key)
+    preferences (json)
+'''
+
 @app.route('/register', methods=['POST'])
 def registerDevice():
     data = request.get_json()
     mac_address = data['macAddress']
     username = data['username']
     password = data['password']
+    # Check mac address has not been used yet
+    # Register MAC address with username and password
+    # Send key to user's ESP32 - maybe via MQTT (don't worry about this right now)
+    # Return success message
     print(f"Registering device with MAC address {mac_address} for user {username}")
     return jsonify(data)
 
@@ -19,21 +35,22 @@ def validateKey():
     data = request.get_json()
     mac_address = data['macAddress']
     key = data['key']
-    # validate key here
-    return jsonify(data) # return username and password if key is valid
+    # Check key against database and return username and password if valid
+    # Call function to regenerate key
+    return jsonify(data)
 
 @app.route('/regenKey', methods=['GET'])
 def regenKey():
     data = request.get_json()
     mac_address = data['macAddress']
-    # regen key here
+    # Regenerate key, and store in database
     return jsonify(data)
 
 @app.route('/retrievePreferences', methods=['GET'])
 def retrievePreferences():
     data = request.get_json()
     mac_address = data['macAddress']
-    # retrieve preferences here
+    # Retrieve preferences from database using mac_address
     return jsonify(data)
 
 
@@ -42,7 +59,7 @@ def updatePreferences():
     data = request.get_json()
     mac_address = data['macAddress']
     preferences = data['preferences']
-    # update preferences here
+    # Add preference to database using mac_address 
     return jsonify(data)
 
 
