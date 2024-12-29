@@ -29,6 +29,11 @@ class RegisterDeviceRequest(BaseModel):
     password: str
 
 
+class ValidateKeyRequest(BaseModel):
+    mac_address: str
+    key: str
+
+
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
 
@@ -56,7 +61,21 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
     transaction.add(device)
     return device
 
-# validate key
+@post('/devices/validate-key')
+async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.mac_address == data.mac_address)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        return {'status_code': 404, 'details': 'Device not found'}
+    
+    if device.key != data.key:
+        return {'status_code': 401, 'details': 'Invalid key'}
+    
+    new_key = generate_key()
+    device.key = new_key
+    return {'status': 'valid'}
 
 # regenerate key
 
@@ -76,7 +95,8 @@ sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 app = Litestar(
     route_handlers=[
         get_devices,
-        register_device
+        register_device,
+        validate_key
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
