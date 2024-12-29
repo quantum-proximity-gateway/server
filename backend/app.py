@@ -1,7 +1,8 @@
-from litestar import Litestar
+from litestar import Litestar, get
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class Base(DeclarativeBase):
@@ -27,15 +28,27 @@ class Preferences(Base):
     )
     settings: Mapped[str]
 
+# get all devices
+
+# register device
+
+# validate key
+
+# regenerate key
+
+# retrieve preferences for device
+
+# update preferences for device
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
     metadata=Base.metadata,
     create_all=True
 )
-sqlalchemy_plugin = SQLAlchemyPlugin(db_config)
+sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 
 app = Litestar(
     route_handlers=[],
-    plugins=[sqlalchemy_plugin]
+    plugins=[sqlalchemy_plugin],
+    debug=True
 )
