@@ -38,6 +38,10 @@ class RegenerateKeyRequest(BaseModel):
     mac_address: str
 
 
+class GetPreferencesRequest(BaseModel):
+    mac_address: str
+
+
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
 
@@ -88,13 +92,22 @@ async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) 
     device = result.scalar_one_or_none()
 
     if not device:
-        return {'status_code': 404, 'details': 'Device not found'}
+        return {'status_code': 404, 'detail': 'Device not found'}
 
     new_key = generate_key()
     device.key = new_key
     return {'status': 'success'}
 
-# retrieve preferences for device
+@get('/devices/{mac_address}/preferences')
+async def get_preferences(data: GetPreferencesRequest, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.mac_address == data.mac_address)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        return {'status_code': 404, 'detail': 'Device not found'}
+    
+    return {'preferences': device.preferences}
 
 # update preferences for device
 
@@ -112,7 +125,8 @@ app = Litestar(
         get_devices,
         register_device,
         validate_key,
-        regenerate_key
+        regenerate_key,
+        get_preferences
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
