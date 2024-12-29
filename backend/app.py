@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
-import secrets
+import secrets, json
 
 
 class Base(DeclarativeBase):
@@ -38,21 +38,18 @@ class RegenerateKeyRequest(BaseModel):
     mac_address: str
 
 
-class GetPreferencesRequest(BaseModel):
-    mac_address: str
-
-
 class UpdatePreferencesRequest(BaseModel):
-    mac_address: str
-    preferences: str
+    preferences: dict
 
 
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
 
+
 async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     async with db_session.begin():
         yield db_session
+
 
 @get('/devices')
 async def get_devices(transaction: AsyncSession) -> list[Device]:
@@ -60,6 +57,7 @@ async def get_devices(transaction: AsyncSession) -> list[Device]:
     result = await transaction.execute(query)
     devices = result.scalars().all()
     return devices
+
 
 @post('/devices')
 async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> Device:
@@ -73,6 +71,7 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
     )
     transaction.add(device)
     return device
+
 
 @post('/devices/validate-key')
 async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> dict:
@@ -90,6 +89,7 @@ async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> d
     device.key = new_key
     return {'status': 'success'}
 
+
 @post('/devices/regenerate-key')
 async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) -> dict:
     query = select(Device).where(Device.mac_address == data.mac_address)
@@ -103,28 +103,35 @@ async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) 
     device.key = new_key
     return {'status': 'success'}
 
-@get('/devices/{mac_address}/preferences')
-async def get_preferences(data: GetPreferencesRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == data.mac_address)
+
+@get('/devices/{mac_address:str}/preferences')
+async def get_preferences(mac_address: str, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.mac_address == mac_address)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
 
     if not device:
         return {'status_code': 404, 'detail': 'Device not found'}
     
-    return {'preferences': device.preferences}
+    try:
+        parsed_preferences = json.loads(device.preferences)
+        return {'preferences': parsed_preferences}
+    except json.JSONDecodeError:
+        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
-@put('/devices/{mac_address}/preferences')
-async def update_preferences(data: UpdatePreferencesRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == data.mac_address)
+
+@put('/devices/{mac_address:str}/preferences')
+async def update_preferences(mac_address: str, data: UpdatePreferencesRequest, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.mac_address == mac_address)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
 
     if not device:
         return {'status_code': 404, 'detail': 'Device not found'}
-    
-    device.preferences = data.preferences
-    return {'status': 'success', 'preferences': device.preferences}
+
+    device.preferences = json.dumps(data.preferences)
+    return {'status': 'success', 'preferences': data.preferences}
+
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
