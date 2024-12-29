@@ -1,8 +1,8 @@
 from litestar import Litestar, get, post
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from pydantic import BaseModel
-from sqlalchemy import ForeignKey, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload
+from sqlalchemy import select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 import secrets
 
@@ -18,24 +18,14 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
-    preferences: Mapped['Preferences'] = relationship(back_populates='device', uselist=False)
-
-
-class Preferences(Base):
-    __tablename__ = 'preferences'
-
-    mac_address: Mapped[str] = mapped_column(
-        ForeignKey('devices.mac_address', ondelete='CASCADE'),
-        primary_key=True
-    )
-    settings: Mapped[str]
-    device: Mapped[Device] = relationship(back_populates='preferences')
+    preferences: Mapped[str]
 
 
 class RegisterDeviceRequest(BaseModel):
     mac_address: str
     username: str
     password: str
+    preferences: str = '{}'
 
 
 def generate_key(length: int = 32) -> str:
@@ -43,14 +33,27 @@ def generate_key(length: int = 32) -> str:
 
 @get('/devices')
 async def get_devices(db_session: AsyncSession) -> list[Device]:
-    query = select(Device).options(selectinload(Device.preferences))
+    query = select(Device)
     result = await db_session.execute(query)
     devices = result.scalars().all()
     return devices
 
 @post('/devices')
-async def register_device(db_session: AsyncSession, request: RegisterDeviceRequest) -> Device:
-    pass
+async def register_device(data: RegisterDeviceRequest, db_session: AsyncSession) -> Device:
+    key = generate_key()
+
+    device = Device(
+        mac_address=data.mac_address,
+        username=data.username,
+        password=data.password,
+        key=key,
+        preferences=data.preferences
+    )
+
+    db_session.add(device)
+    await db_session.commit()
+
+    return device
 
 # validate key
 
