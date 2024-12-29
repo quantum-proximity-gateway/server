@@ -1,6 +1,6 @@
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
-from litestar import Litestar, get, post
+from litestar import Litestar, get, post, put
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -40,6 +40,11 @@ class RegenerateKeyRequest(BaseModel):
 
 class GetPreferencesRequest(BaseModel):
     mac_address: str
+
+
+class UpdatePreferencesRequest(BaseModel):
+    mac_address: str
+    preferences: str
 
 
 def generate_key(length: int = 32) -> str:
@@ -109,8 +114,17 @@ async def get_preferences(data: GetPreferencesRequest, transaction: AsyncSession
     
     return {'preferences': device.preferences}
 
-# update preferences for device
+@put('/devices/{mac_address}/preferences')
+async def update_preferences(data: UpdatePreferencesRequest, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.mac_address == data.mac_address)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
 
+    if not device:
+        return {'status_code': 404, 'detail': 'Device not found'}
+    
+    device.preferences = data.preferences
+    return {'status': 'success', 'preferences': device.preferences}
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
@@ -126,7 +140,8 @@ app = Litestar(
         register_device,
         validate_key,
         regenerate_key,
-        get_preferences
+        get_preferences,
+        update_preferences
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
