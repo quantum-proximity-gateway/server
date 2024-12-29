@@ -1,7 +1,7 @@
 from litestar import Litestar, get
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKey, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -27,8 +27,15 @@ class Preferences(Base):
         primary_key=True
     )
     settings: Mapped[str]
+    device: Mapped[Device] = relationship(back_populates='preferences')
 
-# get all devices
+
+@get('/devices')
+async def get_devices(db_session: AsyncSession) -> list[Device]:
+    query = select(Device).options(selectinload(Device.preferences))
+    result = await db_session.execute(query)
+    devices = result.scalars().all()
+    return devices
 
 # register device
 
@@ -48,7 +55,7 @@ db_config = SQLAlchemyAsyncConfig(
 sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 
 app = Litestar(
-    route_handlers=[],
+    route_handlers=[get_devices],
     plugins=[sqlalchemy_plugin],
     debug=True
 )
