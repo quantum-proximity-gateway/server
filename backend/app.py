@@ -20,7 +20,7 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
-    preferences: Mapped[str]
+    preferences: Mapped[dict] = mapped_column(default='{}')
 
 
 class RegisterDeviceRequest(BaseModel):
