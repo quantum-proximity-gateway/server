@@ -26,5 +26,31 @@
             "macos": "",
             "gnome": "gsettings set org.gnome.desktop.interface enable-animations"
         }
+    },
+    "font_name": { // fonts in gtk+
+        "default": "Cantarell 11",
+        "commands": {
+            "windows": "",
+            "macos": "",
+            "gnome": "gsettings set org.gnome.desktop.interface font-name"
+        }
+    },
+    "cursor_size": {
+        "lower_bound": 0,
+        "upper_bound": 128,
+        "default": 24,
+        "commands": {
+            "windows": "",
+            "macos": "",
+            "gnome": "gsettings set org.gnome.desktop.interface cursor-size"
+        }
+    },
+    "locate_pointer": {
+        "default": false,
+        "commands": {
+            "windows": "",
+            "macos": "",
+            "gnome": "gsettings set org.gnome.desktop.interface locate-pointer"
+        }
     }
 }
