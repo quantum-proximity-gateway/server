@@ -134,6 +134,12 @@ async def update_preferences(mac_address: str, data: UpdatePreferencesRequest, t
     device.preferences = json.dumps(data.preferences)
     return {'status': 'success', 'preferences': data.preferences}
 
+@get('/devices/all-mac-addresses')
+async def get_all_mac_addresses(transaction: AsyncSession) -> list[str]:
+    query = select(Device.mac_address)
+    result = await transaction.execute(query)
+    mac_addresses = result.scalars().all()
+    return mac_addresses
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
@@ -156,7 +162,8 @@ app = Litestar(
         validate_key,
         regenerate_key,
         get_preferences,
-        update_preferences
+        update_preferences,
+        get_all_mac_addresses
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
