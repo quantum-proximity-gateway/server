@@ -2,6 +2,7 @@ from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import aut
 from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, put
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
+from litestar.config.cors import CORSConfig
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -59,9 +60,10 @@ async def get_devices(transaction: AsyncSession) -> list[Device]:
     return devices
 
 
-@post('/devices')
+@post('/register')
 async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> Device:
     key = generate_key()
+    print(key)
     device = Device(
         mac_address=data.mac_address,
         username=data.username,
@@ -141,6 +143,12 @@ db_config = SQLAlchemyAsyncConfig(
 )
 sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 
+cors_config = CORSConfig(
+    allow_origins=['*'], 
+    allow_methods=['GET', 'POST', 'PUT'],  # Allow specific HTTP methods
+    allow_headers=['*']
+)
+
 app = Litestar(
     route_handlers=[
         get_devices,
@@ -152,5 +160,6 @@ app = Litestar(
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
+    cors_config=cors_config,
     debug=True
 )
