@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 import secrets, json
+import urllib.parse
 
 
 class Base(DeclarativeBase):
@@ -65,7 +66,7 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
     key = generate_key()
     print(key)
     device = Device(
-        mac_address=data.mac_address,
+        mac_address=data.mac_address.strip(),
         username=data.username,
         password=data.password,
         key=key,
@@ -143,14 +144,17 @@ async def get_all_mac_addresses(transaction: AsyncSession) -> list[str]:
 
 @get('/devices/{mac_address:str}/username')
 async def get_username(mac_address: str, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == mac_address)
+    mac_address = urllib.parse.unquote(mac_address)
+
+    query = select(Device.username).where(Device.mac_address == mac_address)
+
     result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
+    username = result.scalar_one_or_none()
 
-    if not device:
+    if not username:
         return {'status_code': 404, 'detail': 'Device not found'}
-
-    return {'username': device.username}
+    
+    return {'username': username}
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
