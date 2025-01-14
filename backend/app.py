@@ -141,6 +141,17 @@ async def get_all_mac_addresses(transaction: AsyncSession) -> list[str]:
     mac_addresses = result.scalars().all()
     return mac_addresses
 
+@get('/devices/{mac_address:str}/username')
+async def get_username(mac_address: str, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.mac_address == mac_address)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        return {'status_code': 404, 'detail': 'Device not found'}
+
+    return {'username': device.username}
+
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
     metadata=Base.metadata,
@@ -163,7 +174,8 @@ app = Litestar(
         regenerate_key,
         get_preferences,
         update_preferences,
-        get_all_mac_addresses
+        get_all_mac_addresses,
+        get_username
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
