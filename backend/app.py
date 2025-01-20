@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, put
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
+from litestar.exceptions import HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -62,9 +63,15 @@ async def get_devices(transaction: AsyncSession) -> list[Device]:
 
 
 @post('/register')
-async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> Device:
+async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.mac_address == data.mac_address.strip())
+    result = await transaction.execute(query)
+    existing_device = result.scalar_one_or_none()
+
+    if existing_device:
+        raise HTTPException(status_code=409, detail='Device already registered')
+
     key = generate_key()
-    print(key)
     device = Device(
         mac_address=data.mac_address.strip(),
         username=data.username,
@@ -72,8 +79,13 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
         key=key,
         preferences='{}'
     )
-    transaction.add(device)
-    return device
+    try:
+        transaction.add(device)
+    except:
+        print('RAISE')
+        raise HTTPException(status_code=400, detail='Device already registered')
+    return {'status_code': 201, 'status': 'success', 'key': key}
+    
 
 
 @post('/devices/validate-key')
