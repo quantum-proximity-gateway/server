@@ -11,6 +11,7 @@ litestar = {extras = ["standard"], version = "*"}
 aiosqlite = "*"
 opencv-python = "*"
 pygithub = "*"
+python-dotenv = "*"
 
 [dev-packages]
 

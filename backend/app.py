@@ -19,6 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 from litestar.datastructures import UploadFile
 from github import Github
+from dotenv import load_dotenv
+
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 
 class Base(DeclarativeBase):
@@ -287,8 +291,47 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     cap.release()
 
-    #TODO: ASAP
     # Upload frames to GitHub: Create folder under username, upload folder to rpi-code repo
+    github_token = os.getenv('GITHUB_AUTH_TOKEN')
+    if not github_token:
+        logging.error("GitHub token not found")
+        return {'status': 'error', 'detail': 'GitHub token not found'}
+    
+    try:
+        g = Github(github_token)
+        repo = g.get_repo("quantum-proximity-gateway/rpi-code")
+
+        for frame_file in extracted_frames:
+            with open(frame_file, 'rb') as frame:
+                content = frame.read()
+
+            file_name = os.path.basename(frame_file)
+            remote_path = f"main/dataset/{username}/{file_name}"
+
+            try:
+                existing_file = repo.get_contents(remote_path)
+                logging.info(f"File {file_name} already exists")
+
+                repo.update_file(
+                    path=remote_path,
+                    message=f"Update {remote_path}",
+                    content=content,
+                    sha=existing_file.sha
+                )
+                logging.info(f"Updated file in GitHub: {remote_path}")
+            
+            except Exception as e:
+                logging.info(f"File {file_name} not found, creating new file")
+                repo.create_file(
+                    path=remote_path,
+                    message=f"Add {remote_path}",
+                    content=content
+                )
+                logging.info(f"Uploaded file to GitHub: {remote_path}")
+        
+    except Exception as e:
+        logging.error(f"Error uploading frames to GitHub: {e}")
+        return {'status': 'error', 'detail': 'Error uploading frames'}
 
     return {'status': 'success', 'video_path': video_path}
 
