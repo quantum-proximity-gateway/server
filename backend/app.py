@@ -3,13 +3,19 @@ from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, put
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
+from litestar.enums import RequestEncodingType
+from litestar.params import Body
 from litestar.exceptions import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 import secrets, json
 import urllib.parse
+from typing import Annotated
+from litestar.datastructures import UploadFile
+
+import logging
 import os
 
 
@@ -37,7 +43,6 @@ class ValidateKeyRequest(BaseModel):
     mac_address: str
     key: str
 
-
 class RegenerateKeyRequest(BaseModel):
     mac_address: str
 
@@ -47,9 +52,11 @@ class UpdatePreferencesRequest(BaseModel):
 
 class FaceRegistrationRequest(BaseModel):
     mac_address: str
-    video: bytes
-    
+    video: UploadFile
 
+    class Config(ConfigDict):
+        arbitrary_types_allowed = True
+    
 
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
@@ -66,7 +73,6 @@ async def get_devices(transaction: AsyncSession) -> list[Device]:
     result = await transaction.execute(query)
     devices = result.scalars().all()
     return devices
-
 
 @post('/register')
 async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> dict:
@@ -190,14 +196,15 @@ async def get_credentials(mac_address: str, transaction: AsyncSession) -> dict:
     username, password = credentials
     return {'username': username, 'password': password}
 
-@post('registration/faceRec')
-async def register_face(data: FaceRegistrationRequest, transaction: AsyncSession):
-    print(data)
+@post('/registration/faceRec')
+async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
     mac_address = data.mac_address
-    video = data.video
+    logging.info(f"Received mac_address: {mac_address}")
+    video = await data.video.read()
 
     username = await fetch_username(mac_address, transaction) # To be used as folder name
-    video_path = f'/{username}/video.webm'
+    script_dir = os.path.dirname(__file__)  # Get the directory of the current script
+    video_path = os.path.join(script_dir, "videos", username, 'video.webm')
 
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
 
@@ -205,6 +212,7 @@ async def register_face(data: FaceRegistrationRequest, transaction: AsyncSession
         video_file.write(video)
     
     return {'status': 'success', 'video_path': video_path}
+ 
     # Upload frames to GitHub: Create folder under username, upload folder to rpi-code repo
 
 
@@ -237,7 +245,7 @@ app = Litestar(
         get_all_mac_addresses,
         get_username,
         get_credentials,
-        register_face
+        register_face,
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],

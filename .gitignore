@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 
 .ds_store
+
+/backend/videos
