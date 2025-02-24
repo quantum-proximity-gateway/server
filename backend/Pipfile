@@ -9,6 +9,8 @@ pydantic = "*"
 sqlalchemy = "*"
 litestar = {extras = ["standard"], version = "*"}
 aiosqlite = "*"
+opencv-python = "*"
+pygithub = "*"
 
 [dev-packages]
 

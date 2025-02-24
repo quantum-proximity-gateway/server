@@ -1,3 +1,9 @@
+import secrets, json
+import urllib.parse
+import logging
+import os
+import cv2
+import subprocess
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, put
@@ -10,13 +16,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
-import secrets, json
-import urllib.parse
 from typing import Annotated
 from litestar.datastructures import UploadFile
-
-import logging
-import os
+from github import Github
 
 
 class Base(DeclarativeBase):
@@ -198,9 +200,28 @@ async def get_credentials(mac_address: str, transaction: AsyncSession) -> dict:
 
 @post('/registration/faceRec')
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
+
+    def convert_to_mp4(webm_path: str, mp4_path: str) -> None:
+        """Convert a WebM file to MP4 using ffmpeg."""
+        # Common options: -c:v libx264 for video, -c:a aac for audio.
+        # Adjust as needed for your environment/codecs.
+        command = [
+            'ffmpeg',
+            '-i', webm_path,
+            '-c:v', 'libx264',
+            '-c:a', 'aac',
+            '-strict', 'experimental',  # Sometimes needed for aac
+            '-y',  # Overwrite without asking
+            mp4_path
+        ]
+        try:
+            subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as e:
+            logging.error(f"FFmpeg conversion failed: {e.stderr.decode('utf-8', errors='replace')}")
+            raise HTTPException(status_code=500, detail="Failed to convert WebM to MP4")
+
     mac_address = data.mac_address
     logging.info(f"Received mac_address: {mac_address}")
-    video = await data.video.read()
     #TODO: Add check to see if face already registered
     username = await fetch_username(mac_address, transaction) # To be used as folder name
     script_dir = os.path.dirname(__file__)  # Get the directory of the current script
@@ -208,14 +229,69 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
 
+    chunk_size = 1024 * 1024 # 1MB
     with open(video_path, 'wb') as video_file:
-        video_file.write(video)
+        while True:
+            chunk = await data.video.read(chunk_size)
+            if not chunk:
+                break
+            video_file.write(chunk)
+
+    # need to convert to mp4 cuz webm isn't fully saved/processed by the time we need to extract frames
+    mp4_path = os.path.join(script_dir, "videos", username, "video.mp4")
+    convert_to_mp4(video_path, mp4_path)
     
-    return {'status': 'success', 'video_path': video_path}
+    # Grab 5 frames from the video
+    cap = cv2.VideoCapture(mp4_path)
+
+    if not cap.isOpened():
+        logging.error("Error opening video file")
+        return {'status': 'error', 'detail': 'Error opening video file'}
+    
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration_sec = total_frames / fps if fps else 0
+    skip_frames = int(0.5 * fps) # skip first 0.5 seconds - camera stabilization
+
+    logging.info(f"Video info - FPS: {fps}, Total frames: {total_frames}, Duration: {duration_sec:.2f}s")
+
+    # not really necessary - but just in case
+    if duration_sec < 2: 
+        logging.warning("Video duration is shorter than 2 seconds—check the frontend code or device recording.")
+    if (total_frames - skip_frames) < 5:
+        logging.error("Video too short")
+        return {'status': 'error', 'detail': 'Video too short'}
+
+    interval = max(1, (total_frames - skip_frames) // 6)
+
+    frames_dir = os.path.join(script_dir, "videos", username, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
+
+    extracted_frames = []
+    for i in range(1, 6):
+        
+        frame_idx = skip_frames + i * interval
+        if frame_idx >= total_frames: # in case of rounding / video shorter than expected
+            break
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            logging.warning(f"Error reading frame {i}")
+            continue
+        
+        frame_path = os.path.join(frames_dir, f'frame_{i}.jpg')
+        cv2.imwrite(frame_path, frame)
+        extracted_frames.append(frame_path)
+        logging.info(f"Saved frame {i} to {frame_path}")
+
+    cap.release()
 
     #TODO: ASAP
-    # Grab 5 frames from the video
     # Upload frames to GitHub: Create folder under username, upload folder to rpi-code repo
+
+    return {'status': 'success', 'video_path': video_path}
+
     #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
