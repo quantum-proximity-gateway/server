@@ -4,6 +4,7 @@ import logging
 import os
 import cv2
 import subprocess
+import shutil
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, put
@@ -229,7 +230,8 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     #TODO: Add check to see if face already registered
     username = await fetch_username(mac_address, transaction) # To be used as folder name
     script_dir = os.path.dirname(__file__)  # Get the directory of the current script
-    video_path = os.path.join(script_dir, "videos", username, 'video.webm')
+    user_video_dir = os.path.join(script_dir, "videos", username)
+    video_path = os.path.join(user_video_dir, 'video.webm')
 
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
 
@@ -242,7 +244,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
             video_file.write(chunk)
 
     # need to convert to mp4 cuz webm isn't fully saved/processed by the time we need to extract frames
-    mp4_path = os.path.join(script_dir, "videos", username, "video.mp4")
+    mp4_path = os.path.join(user_video_dir, "video.mp4")
     convert_to_mp4(video_path, mp4_path)
     
     # Grab 5 frames from the video
@@ -268,7 +270,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     interval = max(1, (total_frames - skip_frames) // 6)
 
-    frames_dir = os.path.join(script_dir, "videos", username, "frames")
+    frames_dir = os.path.join(user_video_dir, "frames")
     os.makedirs(frames_dir, exist_ok=True)
 
     extracted_frames = []
@@ -332,6 +334,10 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     except Exception as e:
         logging.error(f"Error uploading frames to GitHub: {e}")
         return {'status': 'error', 'detail': 'Error uploading frames'}
+
+    if os.path.exists(user_video_dir):
+        shutil.rmtree(user_video_dir, ignore_errors=True)
+        logging.info(f"Deleted folder: {user_video_dir}")
 
     return {'status': 'success', 'video_path': video_path}
 
