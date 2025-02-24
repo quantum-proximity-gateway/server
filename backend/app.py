@@ -236,7 +236,8 @@ app = Litestar(
         update_preferences,
         get_all_mac_addresses,
         get_username,
-        get_credentials
+        get_credentials,
+        register_face
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
