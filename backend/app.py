@@ -212,10 +212,11 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
         video_file.write(video)
     
     return {'status': 'success', 'video_path': video_path}
- 
+
+    #TODO: ASAP
+    # Grab 5 frames from the video
     # Upload frames to GitHub: Create folder under username, upload folder to rpi-code repo
-
-
+    #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
 
