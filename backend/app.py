@@ -10,6 +10,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 import secrets, json
 import urllib.parse
+import os
 
 
 class Base(DeclarativeBase):
@@ -43,6 +44,11 @@ class RegenerateKeyRequest(BaseModel):
 
 class UpdatePreferencesRequest(BaseModel):
     preferences: dict
+
+class FaceRegistrationRequest(BaseModel):
+    mac_address: str
+    video: bytes
+    
 
 
 def generate_key(length: int = 32) -> str:
@@ -154,19 +160,57 @@ async def get_all_mac_addresses(transaction: AsyncSession) -> list[str]:
     mac_addresses = result.scalars().all()
     return mac_addresses
 
-@get('/devices/{mac_address:str}/username')
-async def get_username(mac_address: str, transaction: AsyncSession) -> dict:
+# Extracted the logic of the function to reuse elsewhere
+async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     mac_address = urllib.parse.unquote(mac_address)
-
     query = select(Device.username).where(Device.mac_address == mac_address)
-
     result = await transaction.execute(query)
     username = result.scalar_one_or_none()
+    return username
 
+@get('/devices/{mac_address:str}/username')
+async def get_username(mac_address: str, transaction: AsyncSession) -> dict:
+    username = await fetch_username(mac_address, transaction)
     if not username:
         return {'status_code': 404, 'detail': 'Device not found'}
-    
     return {'username': username}
+
+@get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
+async def get_credentials(mac_address: str, transaction: AsyncSession) -> dict:
+    mac_address = urllib.parse.unquote(mac_address)
+
+    query = select(Device.username, Device.password).where(Device.mac_address == mac_address)
+
+    result = await transaction.execute(query)
+    credentials = result.one_or_none()
+    print('Credentials:', credentials)
+    if not credentials:
+        return {'status_code': 404, 'detail': 'Device not found'}
+
+    username, password = credentials
+    return {'username': username, 'password': password}
+
+@post('registration/faceRec')
+async def register_face(data: FaceRegistrationRequest, transaction: AsyncSession):
+    print(data)
+    mac_address = data.mac_address
+    video = data.video
+
+    username = await fetch_username(mac_address, transaction) # To be used as folder name
+    video_path = f'/{username}/video.webm'
+
+    os.makedirs(os.path.dirname(video_path), exist_ok=True)
+
+    with open(video_path, 'wb') as video_file:
+        video_file.write(video)
+    
+    return {'status': 'success', 'video_path': video_path}
+    # Upload frames to GitHub: Create folder under username, upload folder to rpi-code repo
+
+
+    # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
+
+
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
@@ -191,7 +235,8 @@ app = Litestar(
         get_preferences,
         update_preferences,
         get_all_mac_addresses,
-        get_username
+        get_username,
+        get_credentials
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
