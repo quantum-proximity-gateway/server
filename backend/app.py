@@ -201,7 +201,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     mac_address = data.mac_address
     logging.info(f"Received mac_address: {mac_address}")
     video = await data.video.read()
-
+    #TODO: Add check to see if face already registered
     username = await fetch_username(mac_address, transaction) # To be used as folder name
     script_dir = os.path.dirname(__file__)  # Get the directory of the current script
     video_path = os.path.join(script_dir, "videos", username, 'video.webm')
