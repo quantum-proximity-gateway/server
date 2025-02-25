@@ -1,4 +1,5 @@
-import secrets, json
+import secrets
+import json
 import urllib.parse
 import logging
 import os
@@ -37,7 +38,7 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
-    preferences: Mapped[str]
+    preferences: Mapped[dict]
 
 
 class RegisterDeviceRequest(BaseModel):
@@ -63,7 +64,10 @@ class FaceRegistrationRequest(BaseModel):
 
     class Config(ConfigDict):
         arbitrary_types_allowed = True
-    
+
+class UpdateJSONPreferencesRequest(BaseModel):
+    username: str
+    preferences: dict
 
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
@@ -344,6 +348,32 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
+@post('/preferences/update')
+async def update_json_preferences(data: UpdateJSONPreferencesRequest, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.username == data.username)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        return {'status_code': 404, 'detail': 'Device not found'}
+
+    device.preferences = json.dumps(data.preferences)
+    return {'status': 'success', 'preferences': data.preferences}
+
+@get('/preferences/{username:str}')
+async def get_json_preferences(username: str, transaction: AsyncSession) -> dict:
+    query = select(Device).where(Device.username == username)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        return {'status_code': 404, 'detail': 'Device not found'}
+    
+    try:
+        parsed_preferences = json.loads(device.preferences)
+        return {'preferences': parsed_preferences}
+    except json.JSONDecodeError:
+        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
 
 db_config = SQLAlchemyAsyncConfig(
