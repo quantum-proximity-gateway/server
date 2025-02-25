@@ -316,6 +316,17 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
         g = Github(github_token)
         repo = g.get_repo("quantum-proximity-gateway/rpi-code")
 
+        # 1. Check if branch 'images' exists, if not create it from 'main'
+        try:
+            repo.get_branch("images")
+            logging.info("Branch 'images' already exists.")
+        except GithubException:
+            logging.info("Branch 'images' does not exist. Creating from 'main'...")
+            main_ref = repo.get_git_ref("heads/main")
+            repo.create_git_ref(ref='refs/heads/images', sha=main_ref.object.sha)
+            logging.info("Created branch 'images' from 'main'.")
+
+        # 2. Loop through extracted frames and commit them to 'images' branch
         for frame_file in extracted_frames:
             with open(frame_file, 'rb') as frame:
                 content = frame.read()
@@ -324,26 +335,31 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
             remote_path = f"main/dataset/{username}/{file_name}"
 
             try:
-                existing_file = repo.get_contents(remote_path)
-                logging.info(f"File {file_name} already exists")
+                # Attempt to get file from 'images' branch
+                existing_file = repo.get_contents(remote_path, ref="images")
+                logging.info(f"File '{file_name}' already exists on 'images' branch.")
 
+                # Update existing file
                 repo.update_file(
                     path=remote_path,
                     message=f"Update {remote_path}",
                     content=content,
-                    sha=existing_file.sha
+                    sha=existing_file.sha,
+                    branch="images"
                 )
-                logging.info(f"Updated file in GitHub: {remote_path}")
+                logging.info(f"Updated file in GitHub on branch 'images': {remote_path}")
             
-            except Exception as e:
-                logging.info(f"File {file_name} not found, creating new file")
+            except GithubException as e:
+                # If the file doesn't exist, create a new one
+                logging.info(f"File '{file_name}' not found on 'images' branch. Creating new file.")
                 repo.create_file(
                     path=remote_path,
                     message=f"Add {remote_path}",
-                    content=content
+                    content=content,
+                    branch="images"
                 )
-                logging.info(f"Uploaded file to GitHub: {remote_path}")
-        
+                logging.info(f"Uploaded file to GitHub on branch 'images': {remote_path}")
+
     except Exception as e:
         logging.error(f"Error uploading frames to GitHub: {e}")
         return {'status': 'error', 'detail': 'Error uploading frames'}
