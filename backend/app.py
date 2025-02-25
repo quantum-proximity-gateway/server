@@ -26,11 +26,10 @@ from github import Github
 from dotenv import load_dotenv
 from copy import deepcopy
 
-
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
-with open(json_path, 'r', encoding='utf-8') as f:
+with open(json_path, 'r') as f:
     DEFAULT_PREFS = json.load(f)
 
 
@@ -45,7 +44,7 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
-    preferences: Mapped[MutableDict[str, Any]] = mapped_column(  # Changed type hint
+    preferences: Mapped[MutableDict[str, Any]] = mapped_column(
         MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
         nullable=False
@@ -367,8 +366,12 @@ async def update_json_preferences(data: UpdateJSONPreferencesRequest, transactio
     if not device:
         return {'status_code': 404, 'detail': 'Device not found'}
 
-    device.preferences = json.dumps(data.preferences)
-    return {'status': 'success', 'preferences': data.preferences}
+    try:
+        device.preferences = data.preferences
+        await transaction.commit()
+        return {'status': 'success', 'preferences': data.preferences}
+    except Exception as e:
+        return {'status_code': 500, 'detail': 'Failed to update preferences'}
 
 @get('/preferences/{username:str}')
 async def get_json_preferences(username: str, transaction: AsyncSession) -> dict:
@@ -380,9 +383,9 @@ async def get_json_preferences(username: str, transaction: AsyncSession) -> dict
         return {'status_code': 404, 'detail': 'Device not found'}
     
     try:
-        parsed_preferences = json.loads(device.preferences)
+        parsed_preferences = device.preferences
         return {'preferences': parsed_preferences}
-    except json.JSONDecodeError:
+    except Exception as e:
         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
 
