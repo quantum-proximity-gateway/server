@@ -22,7 +22,7 @@ from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.types import JSON
 from typing import Annotated, Any
 from litestar.datastructures import UploadFile
-from github import Github
+from github import Github, GithubException
 from dotenv import load_dotenv
 from copy import deepcopy
 
