@@ -18,13 +18,20 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.dialects.postgresql import JSONB
 from typing import Annotated
 from litestar.datastructures import UploadFile
 from github import Github
 from dotenv import load_dotenv
+from copy import deepcopy
 
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
+with open(json_path, 'r', encoding='utf-8') as f:
+    DEFAULT_PREFS = json.load(f)
 
 
 class Base(DeclarativeBase):
@@ -38,7 +45,11 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
-    preferences: Mapped[dict]
+    preferences: Mapped[dict] = mapped_column(
+        MutableDict.as_mutable(JSONB),
+        default=lambda: deepcopy(DEFAULT_PREFS),
+        nullable=False
+    )
 
 
 class RegisterDeviceRequest(BaseModel):
