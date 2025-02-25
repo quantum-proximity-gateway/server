@@ -19,8 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.mutable import MutableDict
-from sqlalchemy.dialects.postgresql import JSONB
-from typing import Annotated
+from sqlalchemy.types import JSON
+from typing import Annotated, Any
 from litestar.datastructures import UploadFile
 from github import Github
 from dotenv import load_dotenv
@@ -45,8 +45,8 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
-    preferences: Mapped[dict] = mapped_column(
-        MutableDict.as_mutable(JSONB),
+    preferences: Mapped[MutableDict[str, Any]] = mapped_column(  # Changed type hint
+        MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
         nullable=False
     )
@@ -111,7 +111,6 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
         username=data.username,
         password=data.password,
         key=key,
-        preferences='{}'
     )
     try:
         transaction.add(device)
@@ -283,13 +282,13 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
         logging.error("Video too short")
         return {'status': 'error', 'detail': 'Video too short'}
 
-    interval = max(1, (total_frames - skip_frames) // 6)
+    interval = max(1, (total_frames - skip_frames) // 21)
 
     frames_dir = os.path.join(user_video_dir, "frames")
     os.makedirs(frames_dir, exist_ok=True)
 
     extracted_frames = []
-    for i in range(1, 6):
+    for i in range(1, 21):
         
         frame_idx = skip_frames + i * interval
         if frame_idx >= total_frames: # in case of rounding / video shorter than expected
@@ -413,6 +412,8 @@ app = Litestar(
         get_username,
         get_credentials,
         register_face,
+        get_json_preferences,
+        update_json_preferences
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],

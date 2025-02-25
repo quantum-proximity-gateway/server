@@ -164,3 +164,4 @@ cython_debug/
 .ds_store
 
 /backend/videos
+/backend/db.sqlite
