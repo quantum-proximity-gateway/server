@@ -6,7 +6,7 @@ import oqs
 KEM_ALGORITHM = 'Kyber512'
 
 kem_sessions = {}
-secrets = {}
+shared_secrets = {}
 
 
 class KEMInitiateRequest(BaseModel):
@@ -40,12 +40,13 @@ def kem_complete(data: KEMCompleteRequest) -> dict:
         raise HTTPException(status_code=401, detail='Client not recognised, please initiate a key exchange session')
     
     shared_secret = server_kem.decap_secret(data.ciphertext)
-    secrets[data.rpi_id] = shared_secret
+    shared_secrets[data.rpi_id] = shared_secret
     return {'status': 'success'}
 
 app = Litestar(
     route_handlers=[
         kem_initiate,
+        kem_complete,
     ],
     debug=True
 )
