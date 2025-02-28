@@ -2,6 +2,7 @@ from litestar import Litestar, get, post
 from litestar.exceptions import HTTPException
 from pydantic import BaseModel
 import oqs
+import base64
 
 KEM_ALGORITHM = 'Kyber512'
 
@@ -27,7 +28,8 @@ def kem_initiate(data: KEMInitiateRequest) -> dict:
     server_kem = oqs.KeyEncapsulation(KEM_ALGORITHM)
     kem_sessions[data.rpi_id] = server_kem
     public_key = server_kem.generate_keypair()
-    return {'public_key': public_key}
+    # print(f'Public key: {public_key}')
+    return {'public_key': base64.b64encode(public_key).decode()}
 
 @post('/kem/complete')
 def kem_complete(data: KEMCompleteRequest) -> dict:
@@ -39,7 +41,9 @@ def kem_complete(data: KEMCompleteRequest) -> dict:
     if not server_kem:
         raise HTTPException(status_code=401, detail='Client not recognised, please initiate a key exchange session')
     
-    shared_secret = server_kem.decap_secret(data.ciphertext)
+    ciphertext = base64.b64decode(data.ciphertext)
+    shared_secret = server_kem.decap_secret(ciphertext)
+    print(f'Shared secret: {shared_secret}')
     shared_secrets[data.rpi_id] = shared_secret
     return {'status': 'success'}
 

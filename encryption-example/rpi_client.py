@@ -1,5 +1,6 @@
 import requests
 import oqs
+import base64
 
 CLIENT_ID = 42
 KEM_ALGORITHM = 'Kyber512'
@@ -10,11 +11,14 @@ client_kem = oqs.KeyEncapsulation(KEM_ALGORITHM)
 # Get public key
 data = {'rpi_id': f'{CLIENT_ID}'}
 response = requests.post(f'{SERVER_URL}/kem/initiate', json=data)
-public_key = response.json()['public_key']
+public_key_b64 = response.json()['public_key']
+public_key = base64.b64decode(public_key_b64)
+# print(f'Public key: {public_key}')
 
 # Encapsulate a shared secret
 ciphertext, shared_secret = client_kem.encap_secret(public_key)
+print(f'Shared secret: {shared_secret}')
 
 # Send encapsulated shared secret
-data = {'rpi_id': CLIENT_ID, 'ciphertext': ciphertext}
+data = {'rpi_id': f'{CLIENT_ID}', 'ciphertext': base64.b64encode(ciphertext).decode()}
 response = requests.post(f'{SERVER_URL}/kem/complete', json=data)
