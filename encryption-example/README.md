@@ -1,4 +1,8 @@
-# Example setup
+# Post-quantum cryptography example
+
+This example demonstrates a post-quantum secure key exchange using the Kyber512 Key Encapsulation Mechanism (KEM) to establish a shared secret between a client and server, which is then used as a symmetric key for encryption of messages via AES-GCM.
+
+## Example setup
 
 Before you begin, ensure you are within the `encryption-example/` directory.
 

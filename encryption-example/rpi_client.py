@@ -4,7 +4,7 @@ import base64
 
 CLIENT_ID = 42
 KEM_ALGORITHM = 'Kyber512'
-SERVER_URL = 'http://127.0.0.1:8000' # bug with urllib3, using http instead of https
+SERVER_URL = 'http://127.0.0.1:8000' # Bug with urllib3, so using http instead of https
 
 client_kem = oqs.KeyEncapsulation(KEM_ALGORITHM)
 
@@ -14,6 +14,10 @@ class KEMException(Exception):
 
 
 def generate_shared_secret() -> bytes:
+    '''
+    Initiates and completes a key exchange in order to create a shared secret.
+    '''
+    
     # Get public key
     data = {'rpi_id': f'{CLIENT_ID}'}
     response = requests.post(f'{SERVER_URL}/kem/initiate', json=data)
@@ -33,4 +37,4 @@ def generate_shared_secret() -> bytes:
     
     return shared_secret
 
-generate_shared_secret()
+shared_secret = generate_shared_secret()
