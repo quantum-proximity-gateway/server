@@ -1,8 +1,10 @@
 annotated-types==0.7.0
 anyio==4.8.0
 certifi==2025.1.31
+cffi==1.17.1
 charset-normalizer==3.4.1
 click==8.1.8
+cryptography==44.0.1
 EditorConfig==0.17.0
 exceptiongroup==1.2.2
 Faker==36.1.1
@@ -23,6 +25,7 @@ msgspec==0.19.0
 multidict==6.1.0
 multipart==1.2.1
 polyfactory==2.19.0
+pycparser==2.22
 pydantic==2.10.6
 pydantic_core==2.27.2
 Pygments==2.19.1
