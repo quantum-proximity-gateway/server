@@ -16,7 +16,7 @@ class KEMInitiateRequest(BaseModel):
 
 class KEMCompleteRequest(BaseModel):
     rpi_id: str
-    ciphertext: str
+    ciphertext_b64: str
 
 
 @post('/kem/initiate')
@@ -28,7 +28,8 @@ def kem_initiate(data: KEMInitiateRequest) -> dict:
     server_kem = oqs.KeyEncapsulation(KEM_ALGORITHM)
     kem_sessions[data.rpi_id] = server_kem
     public_key = server_kem.generate_keypair()
-    return {'public_key': base64.b64encode(public_key).decode()}
+    public_key_b64 = base64.b64encode(public_key).decode()
+    return {'public_key_b64': public_key_b64}
 
 @post('/kem/complete')
 def kem_complete(data: KEMCompleteRequest) -> dict:
@@ -45,10 +46,15 @@ def kem_complete(data: KEMCompleteRequest) -> dict:
     shared_secrets[data.rpi_id] = shared_secret
     return {'status': 'success'}
 
+@get('/example-endpoint')
+def example_endpoint() -> dict:
+    return
+
 app = Litestar(
     route_handlers=[
         kem_initiate,
         kem_complete,
+        example_endpoint,
     ],
     debug=True
 )
