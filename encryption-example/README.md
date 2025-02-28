@@ -1,5 +1,7 @@
 # Example setup
 
+Before you begin, ensure you are within the `encryption-example/` directory.
+
 ### 1. Create a Virtual Environment
 
 ```bash
@@ -20,3 +22,5 @@ pip install -r requirements.txt
 cd liboqs-python/
 pip install .
 ```
+
+If liboqs is not detected at runtime by liboqs-python, it will be downloaded, configured and installed automatically.
