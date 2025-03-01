@@ -38,9 +38,11 @@ litestar run
 
 ### 4. Run example client code
 
+Open a separate terminal instance, navigate to the same directory, ensure the same virtual environment is activated in the new instance, then execute the following:
+
 ```bash
 # Run example Raspberry Pi client code
 python rpi_client.py
 ```
 
-If the setup was successful, you should see a message outputted to the server terminal saying "Server received: Hello, Litestar!", and another message on the client side saying "Client received: Hello, Raspberry Pi #42!".
+If the setup was successful, you should see a message outputted to the server terminal saying "Server received: Hello, Litestar!", and a message on the client side saying "Client received: Hello, Raspberry Pi #42!".
