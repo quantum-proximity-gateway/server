@@ -53,6 +53,9 @@ async def kem_complete(data: KEMCompleteRequest) -> dict:
         shared_secret = server_kem.decap_secret(ciphertext)
     except Exception as e:
         raise HTTPException(status_code=400, detail='Failed to decrypt data.')
+    finally:
+        server_kem.free()
+    
     shared_secrets[data.client_id] = shared_secret
     return {'status': 'success'}
 
