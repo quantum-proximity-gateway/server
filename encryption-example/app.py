@@ -27,7 +27,7 @@ class EncryptedMessageRequest(BaseModel):
 
 
 @post('/kem/initiate')
-def kem_initiate(data: KEMInitiateRequest) -> dict:
+async def kem_initiate(data: KEMInitiateRequest) -> dict:
     '''
     Initiate key exchange session. The server generates a KEM key pair and returns the public key.
     '''
@@ -39,7 +39,7 @@ def kem_initiate(data: KEMInitiateRequest) -> dict:
     return {'public_key_b64': public_key_b64}
 
 @post('/kem/complete')
-def kem_complete(data: KEMCompleteRequest) -> dict:
+async def kem_complete(data: KEMCompleteRequest) -> dict:
     '''
     Complete the key exchange. The client sends back the encapsulated shared secret that they have generated.
     '''
@@ -53,17 +53,22 @@ def kem_complete(data: KEMCompleteRequest) -> dict:
     shared_secrets[data.rpi_id] = shared_secret
     return {'status': 'success'}
 
-@get('/example-endpoint')
-def example_endpoint(data: EncryptedMessageRequest) -> dict:
+# @get('/example-endpoint')
+# async def example_endpoint(data: EncryptedMessageRequest) -> dict:
+#     shared_secret = shared_secrets.get(data.rpi_id, None)
+#     if not shared_secret:
+#         raise HTTPException(status_code=404, detail='Shared secret not found.')
+    
 
-    return
+
+#     return
 
 
 app = Litestar(
     route_handlers=[
         kem_initiate,
         kem_complete,
-        example_endpoint,
+        # example_endpoint,
     ],
     debug=True
 )
