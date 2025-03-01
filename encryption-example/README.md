@@ -28,3 +28,19 @@ pip install .
 ```
 
 If liboqs is not detected at runtime by liboqs-python, it will be downloaded, configured and installed automatically.
+
+### 3. Run Litestar server
+
+```bash
+# Start Litestar server
+litestar run
+```
+
+### 4. Run example client code
+
+```bash
+# Run example Raspberry Pi client code
+python rpi_client.py
+```
+
+If the setup was successful, you should see a message outputted to the server terminal saying "Server received: Hello, Litestar!", and another message on the client side saying "Client received: Hello, Raspberry Pi #42!".
