@@ -53,22 +53,32 @@ async def kem_complete(data: KEMCompleteRequest) -> dict:
     shared_secrets[data.rpi_id] = shared_secret
     return {'status': 'success'}
 
-# @get('/example-endpoint')
-# async def example_endpoint(data: EncryptedMessageRequest) -> dict:
-#     shared_secret = shared_secrets.get(data.rpi_id, None)
-#     if not shared_secret:
-#         raise HTTPException(status_code=404, detail='Shared secret not found.')
+@get('/example-endpoint')
+async def example_endpoint(data: EncryptedMessageRequest) -> dict:
+    '''
+    Example API endpoint which demonstrates decrypting incoming request data, and encrypting outgoing response data.
+    '''
+
+    shared_secret = shared_secrets.get(data.rpi_id, None)
+    if not shared_secret:
+        raise HTTPException(status_code=404, detail='Shared secret not found.')
     
+    try:
+        plaintext = aesgcm_decrypt(data.nonce_b64, data.ciphertext_b64, shared_secret)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail='Failed to decrypt data.')
+    print(f'Server received: {plaintext}')
 
-
-#     return
+    response_text = f'Hello Raspberry Pi #{data.rpi_id}!'
+    nonce_b64, ciphertext_b64 = aesgcm_encrypt(response_text, shared_secret)
+    return {'nonce_b64': nonce_b64, 'ciphertext_b64': ciphertext_b64}
 
 
 app = Litestar(
     route_handlers=[
         kem_initiate,
         kem_complete,
-        # example_endpoint,
+        example_endpoint,
     ],
     debug=True
 )
