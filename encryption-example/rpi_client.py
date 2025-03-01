@@ -3,6 +3,7 @@ import oqs
 import base64
 from aesgcm_encryption import aesgcm_encrypt, aesgcm_decrypt
 import uuid
+from pydantic import BaseModel
 
 CLIENT_ID = str(uuid.uuid4())
 KEM_ALGORITHM = 'Kyber512'
@@ -11,7 +12,7 @@ SERVER_URL = 'http://127.0.0.1:8000'  # Bug with urllib3, so using http instead 
 class KEMException(Exception):
     pass
 
-class EncryptedResponse():
+class EncryptedResponse(BaseModel):
     nonce_b64: str
     ciphertext_b64: str
 
@@ -57,7 +58,7 @@ def encrypt_request(plaintext, shared_secret) -> dict:
     return data
 
 def decrypt_request(data: EncryptedResponse, shared_secret) -> dict: # pass in response.json()
-    if not data.nonce_b64 or not data.iphertext_b64:
+    if not data.nonce_b64 or not data.ciphertext_b64:
         raise RuntimeError('Missing parameters in response.')
     
     try:
@@ -65,8 +66,6 @@ def decrypt_request(data: EncryptedResponse, shared_secret) -> dict: # pass in r
         return plaintext
     except Exception as e:
         raise RuntimeError(f'Error: {e}\nFailed to decrypt response data.')
-
-
 
 
 if __name__ == '__main__':
@@ -79,13 +78,7 @@ if __name__ == '__main__':
         raise RuntimeError(f'KEM failed, could not generate secret: {e}')
     # Encrypt request data
     request_text = 'Hello, Litestar!'
-    encrypt_request(request_text)
-    
-
-    # POST request
-    
-
-    print(data)
+    data = encrypt_request(request_text, shared_secret)
 
     response = requests.post(f'{SERVER_URL}/example-endpoint', json=data)
 
@@ -93,10 +86,8 @@ if __name__ == '__main__':
         raise RuntimeError(f'Error {response.status_code}: {response.text}')
     
     response_data = response.json()
-    nonce_b64 = response_data.get('nonce_b64')
-    ciphertext_b64 = response_data.get('ciphertext_b64')
-    if not nonce_b64 or not ciphertext_b64:
-        raise RuntimeError('Missing parameters in response.')
-
-    # Decrypt response data
+    encrypted_response = EncryptedResponse.model_validate(response_data)
+    print(response_data)
+    server_response = decrypt_request(encrypted_response, shared_secret)
+    print(server_response)
     
