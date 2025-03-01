@@ -8,10 +8,12 @@ CLIENT_ID = str(uuid.uuid4())
 KEM_ALGORITHM = 'Kyber512'
 SERVER_URL = 'http://127.0.0.1:8000'  # Bug with urllib3, so using http instead of https
 
-
 class KEMException(Exception):
     pass
 
+class EncryptedResponse():
+    nonce_b64: str
+    ciphertext_b64: str
 
 def generate_shared_secret() -> bytes:
     '''
@@ -42,25 +44,46 @@ def generate_shared_secret() -> bytes:
     
     return shared_secret
 
-if __name__ == '__main__':
-    # Example usage
+def encrypt_request(plaintext, shared_secret) -> dict:
 
-    # Generate shared secret (generate once, use whenever communicating between this client and server)
-    try:
-        shared_secret = generate_shared_secret()
-    except KEMException as e:
-        raise RuntimeError(f'KEM failed, could not generate secret: {e}')
+    nonce_b64, ciphertext_b64 = aesgcm_encrypt(plaintext, shared_secret)
 
-    # Encrypt request data
-    request_text = 'Hello, Litestar!'
-    nonce_b64, ciphertext_b64 = aesgcm_encrypt(request_text, shared_secret)
-
-    # POST request
     data = {
         'client_id': str(CLIENT_ID),
         'nonce_b64': nonce_b64,
         'ciphertext_b64': ciphertext_b64
     }
+
+    return data
+
+def decrypt_request(data: EncryptedResponse, shared_secret) -> dict: # pass in response.json()
+    if not data.nonce_b64 or not data.iphertext_b64:
+        raise RuntimeError('Missing parameters in response.')
+    
+    try:
+        plaintext = aesgcm_decrypt(data.nonce_b64, data.ciphertext_b64, shared_secret)
+        return plaintext
+    except Exception as e:
+        raise RuntimeError(f'Error: {e}\nFailed to decrypt response data.')
+
+
+
+
+if __name__ == '__main__':
+    # Example usage
+    
+    # Generate shared secret (generate once, use whenever communicating between this client and server)
+    try:
+        shared_secret = generate_shared_secret()
+    except KEMException as e:
+        raise RuntimeError(f'KEM failed, could not generate secret: {e}')
+    # Encrypt request data
+    request_text = 'Hello, Litestar!'
+    encrypt_request(request_text)
+    
+
+    # POST request
+    
 
     print(data)
 
@@ -76,8 +99,4 @@ if __name__ == '__main__':
         raise RuntimeError('Missing parameters in response.')
 
     # Decrypt response data
-    try:
-        plaintext = aesgcm_decrypt(nonce_b64, ciphertext_b64, shared_secret)
-        print(f'Client received: {plaintext}')
-    except Exception as e:
-        raise RuntimeError(f'Error: {e}\nFailed to decrypt response data.')
+    
