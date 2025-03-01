@@ -3,6 +3,7 @@ from litestar.exceptions import HTTPException
 from pydantic import BaseModel
 import oqs
 import base64
+from aesgcm_encryption import aesgcm_encrypt, aesgcm_decrypt
 
 KEM_ALGORITHM = 'Kyber512'
 
@@ -16,6 +17,12 @@ class KEMInitiateRequest(BaseModel):
 
 class KEMCompleteRequest(BaseModel):
     rpi_id: str
+    ciphertext_b64: str
+
+
+class EncryptedMessageRequest(BaseModel):
+    rpi_id: str
+    nonce_b64: str
     ciphertext_b64: str
 
 
@@ -39,16 +46,18 @@ def kem_complete(data: KEMCompleteRequest) -> dict:
 
     server_kem = kem_sessions.pop(data.rpi_id, None)
     if not server_kem:
-        raise HTTPException(status_code=401, detail='Client not recognised, please initiate a key exchange session')
+        raise HTTPException(status_code=401, detail='Client not recognised, please initiate a new key exchange session.')
     
-    ciphertext = base64.b64decode(data.ciphertext)
+    ciphertext = base64.b64decode(data.ciphertext_b64)
     shared_secret = server_kem.decap_secret(ciphertext)
     shared_secrets[data.rpi_id] = shared_secret
     return {'status': 'success'}
 
 @get('/example-endpoint')
-def example_endpoint() -> dict:
+def example_endpoint(data: EncryptedMessageRequest) -> dict:
+
     return
+
 
 app = Litestar(
     route_handlers=[
