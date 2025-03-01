@@ -1,4 +1,4 @@
-from litestar import Litestar, get, post
+from litestar import Litestar, post
 from litestar.exceptions import HTTPException
 from pydantic import BaseModel
 import oqs
@@ -56,7 +56,7 @@ async def kem_complete(data: KEMCompleteRequest) -> dict:
     shared_secrets[data.client_id] = shared_secret
     return {'status': 'success'}
 
-@get('/example-endpoint')
+@post('/example-endpoint')
 async def example_endpoint(data: EncryptedMessageRequest) -> dict:
     '''
     Example API endpoint which demonstrates decrypting incoming request data, and encrypting outgoing response data.
