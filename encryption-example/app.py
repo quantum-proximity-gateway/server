@@ -12,16 +12,16 @@ shared_secrets = {}
 
 
 class KEMInitiateRequest(BaseModel):
-    rpi_id: str
+    client_id: str
 
 
 class KEMCompleteRequest(BaseModel):
-    rpi_id: str
+    client_id: str
     ciphertext_b64: str
 
 
 class EncryptedMessageRequest(BaseModel):
-    rpi_id: str
+    client_id: str
     nonce_b64: str
     ciphertext_b64: str
 
@@ -33,7 +33,7 @@ async def kem_initiate(data: KEMInitiateRequest) -> dict:
     '''
 
     server_kem = oqs.KeyEncapsulation(KEM_ALGORITHM)
-    kem_sessions[data.rpi_id] = server_kem
+    kem_sessions[data.client_id] = server_kem
     public_key = server_kem.generate_keypair()
     public_key_b64 = base64.b64encode(public_key).decode()
     return {'public_key_b64': public_key_b64}
@@ -44,13 +44,16 @@ async def kem_complete(data: KEMCompleteRequest) -> dict:
     Complete the key exchange. The client sends back the encapsulated shared secret that they have generated.
     '''
 
-    server_kem = kem_sessions.pop(data.rpi_id, None)
+    server_kem = kem_sessions.pop(data.client_id, None)
     if not server_kem:
         raise HTTPException(status_code=401, detail='Client not recognised, please initiate a new key exchange session.')
     
-    ciphertext = base64.b64decode(data.ciphertext_b64)
-    shared_secret = server_kem.decap_secret(ciphertext)
-    shared_secrets[data.rpi_id] = shared_secret
+    try:
+        ciphertext = base64.b64decode(data.ciphertext_b64)
+        shared_secret = server_kem.decap_secret(ciphertext)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail='Failed to decrypt data.')
+    shared_secrets[data.client_id] = shared_secret
     return {'status': 'success'}
 
 @get('/example-endpoint')
@@ -59,7 +62,7 @@ async def example_endpoint(data: EncryptedMessageRequest) -> dict:
     Example API endpoint which demonstrates decrypting incoming request data, and encrypting outgoing response data.
     '''
 
-    shared_secret = shared_secrets.get(data.rpi_id, None)
+    shared_secret = shared_secrets.get(data.client_id, None)
     if not shared_secret:
         raise HTTPException(status_code=404, detail='Shared secret not found.')
     
@@ -69,7 +72,7 @@ async def example_endpoint(data: EncryptedMessageRequest) -> dict:
         raise HTTPException(status_code=400, detail='Failed to decrypt data.')
     print(f'Server received: {plaintext}')
 
-    response_text = f'Hello Raspberry Pi #{data.rpi_id}!'
+    response_text = f'Hello, Raspberry Pi #{data.client_id}!'
     nonce_b64, ciphertext_b64 = aesgcm_encrypt(response_text, shared_secret)
     return {'nonce_b64': nonce_b64, 'ciphertext_b64': ciphertext_b64}
 
