@@ -33,4 +33,4 @@ def aesgcm_decrypt(nonce_b64: str, ciphertext_b64: str, shared_secret: bytes) ->
     aesgcm = AESGCM(shared_secret)
     plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, None)
 
-    return plaintext_bytes.decode() # convert from bytes to str
+    return plaintext_bytes.decode()  # Convert from bytes to str

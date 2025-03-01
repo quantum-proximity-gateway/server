@@ -44,7 +44,7 @@ def generate_shared_secret() -> bytes:
 if __name__ == '__main__':
     # Example usage
 
-    # Generate shared secret
+    # Generate shared secret (generate once, use whenever communicating between this client and server)
     try:
         shared_secret = generate_shared_secret()
     except KEMException as e:
