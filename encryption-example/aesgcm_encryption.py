@@ -13,7 +13,8 @@ def aesgcm_encrypt(plaintext: str, shared_secret: bytes) -> tuple[str, str]:
 
     # Encrypt the plaintext
     aesgcm = AESGCM(shared_secret)
-    ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+    plaintext_bytes = plaintext.encode()
+    ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, None)
 
     nonce_b64 = base64.b64encode(nonce).decode()
     ciphertext_b64 = base64.b64encode(ciphertext).decode()
@@ -30,6 +31,6 @@ def aesgcm_decrypt(nonce_b64: str, ciphertext_b64: str, shared_secret: bytes) ->
 
     # Decrypt the ciphertext
     aesgcm = AESGCM(shared_secret)
-    plaintext = aesgcm.decrypt(nonce, ciphertext)
+    plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, None)
 
-    return plaintext.decode() # convert from bytes to str
+    return plaintext_bytes.decode() # convert from bytes to str

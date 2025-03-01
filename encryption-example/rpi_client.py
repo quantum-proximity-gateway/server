@@ -48,7 +48,7 @@ if __name__ == '__main__':
     try:
         shared_secret = generate_shared_secret()
     except KEMException as e:
-        print(f'KEM failed, could not generate secret: {e}')
+        raise RuntimeError(f'KEM failed, could not generate secret: {e}')
 
     # Encrypt request data
     request_text = 'Hello, Litestar!'
@@ -63,17 +63,17 @@ if __name__ == '__main__':
     response = requests.post(f'{SERVER_URL}/example-endpoint', json=data)
 
     if response.status_code != 201:
-        print(f'Error {response.status_code}: {response.text}')
+        raise RuntimeError(f'Error {response.status_code}: {response.text}')
     
     response_data = response.json()
     nonce_b64 = response_data.get('nonce_b64')
     ciphertext_b64 = response_data.get('ciphertext_b64')
     if not nonce_b64 or not ciphertext_b64:
-        print('Missing parameters in response.')
+        raise RuntimeError('Missing parameters in response.')
 
     # Decrypt response data
     try:
         plaintext = aesgcm_decrypt(nonce_b64, ciphertext_b64, shared_secret)
         print(f'Client received: {plaintext}')
     except Exception as e:
-        print('Failed to decrypt data.')
+        raise RuntimeError(f'Error: {e}\nFailed to decrypt response data.')
