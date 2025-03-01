@@ -2,8 +2,9 @@ import requests
 import oqs
 import base64
 from aesgcm_encryption import aesgcm_encrypt, aesgcm_decrypt
+import uuid
 
-CLIENT_ID = 42
+CLIENT_ID = str(uuid.uuid4())
 KEM_ALGORITHM = 'Kyber512'
 SERVER_URL = 'http://127.0.0.1:8000'  # Bug with urllib3, so using http instead of https
 
@@ -60,6 +61,9 @@ if __name__ == '__main__':
         'nonce_b64': nonce_b64,
         'ciphertext_b64': ciphertext_b64
     }
+
+    print(data)
+
     response = requests.post(f'{SERVER_URL}/example-endpoint', json=data)
 
     if response.status_code != 201:
