@@ -25,6 +25,7 @@ from litestar.datastructures import UploadFile
 from github import Github, GithubException
 from dotenv import load_dotenv
 from copy import deepcopy
+from encryption_helper import EncryptionHelper
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
