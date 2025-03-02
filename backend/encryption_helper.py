@@ -3,7 +3,6 @@ import oqs
 import base64
 from aesgcm_encryption import aesgcm_encrypt, aesgcm_decrypt
 import json
-from litestar import Litestar, post
 from litestar.exceptions import HTTPException
 
 class EncryptionHelper():
