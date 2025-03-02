@@ -184,7 +184,7 @@ async def update_preferences(mac_address: str, data: UpdatePreferencesRequest, t
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
-    
+
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -213,19 +213,24 @@ async def get_username(mac_address: str, transaction: AsyncSession) -> dict:
     return {'username': username}
 
 @get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
-async def get_credentials(mac_address: str, transaction: AsyncSession) -> dict:
+async def get_credentials(request:Request, mac_address: str, transaction: AsyncSession) -> dict:
     mac_address = urllib.parse.unquote(mac_address)
+    
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
 
     query = select(Device.username, Device.password).where(Device.mac_address == mac_address)
 
     result = await transaction.execute(query)
     credentials = result.one_or_none()
-    print('Credentials:', credentials)
     if not credentials:
         return {'status_code': 404, 'detail': 'Device not found'}
 
     username, password = credentials
-    return {'username': username, 'password': password}
+    data = {'username': username, 'password': password}
+    encrypted_data = encryption_helper.encrypt_msg(data, client_id)
+    return encrypted_data
 
 @post('/registration/faceRec')
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
