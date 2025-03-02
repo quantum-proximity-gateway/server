@@ -92,11 +92,18 @@ async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncS
 
 
 @get('/devices')
-async def get_devices(transaction: AsyncSession) -> list[Device]:
+async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
+
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    
     query = select(Device)
     result = await transaction.execute(query)
     devices = result.scalars().all()
-    return devices
+    
+    encrypted_msg = encryption_helper.encrypt_msg({"devices":devices},client_id)
+    return encrypted_msg
 
 @post('/register')
 async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> dict:
@@ -122,7 +129,7 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
     return {'status_code': 201, 'status': 'success', 'key': key}
     
 
-
+# Add encryption
 @post('/devices/validate-key')
 async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> dict:
     query = select(Device).where(Device.mac_address == data.mac_address)
@@ -194,7 +201,7 @@ async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> 
     mac_addresses = result.scalars().all()
 
     # Encrypting the mac addresses using client_id
-    encrypted_msg = encryption_helper.encrypt_msg(mac_addresses, client_id)
+    encrypted_msg = encryption_helper.encrypt_msg({"mac_addresses": mac_addresses}, client_id)
     return encrypted_msg
 
 # Extracted the logic of the function to reuse elsewhere
