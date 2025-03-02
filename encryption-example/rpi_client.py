@@ -45,8 +45,7 @@ def generate_shared_secret() -> bytes:
     
     return shared_secret
 
-def encrypt_request(plaintext, shared_secret) -> dict:
-
+def encrypt_request(plaintext: str, shared_secret: bytes) -> dict:
     nonce_b64, ciphertext_b64 = aesgcm_encrypt(plaintext, shared_secret)
 
     data = {
