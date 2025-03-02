@@ -8,7 +8,7 @@ import subprocess
 import shutil
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
-from litestar import Litestar, get, post, put
+from litestar import Litestar, get, post, put, Request
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
 from litestar.enums import RequestEncodingType
@@ -25,6 +25,8 @@ from litestar.datastructures import UploadFile
 from github import Github, GithubException
 from dotenv import load_dotenv
 from copy import deepcopy
+from encryption_helper import EncryptionHelper
+
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -32,6 +34,7 @@ json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
 with open(json_path, 'r') as f:
     DEFAULT_PREFS = json.load(f)
 
+encryption_helper = EncryptionHelper()
 
 class Base(DeclarativeBase):
     pass
@@ -87,13 +90,20 @@ async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncS
     async with db_session.begin():
         yield db_session
 
-
+# When is this endpoint used? - might need to delete
 @get('/devices')
-async def get_devices(transaction: AsyncSession) -> list[Device]:
+async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
+
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    
     query = select(Device)
     result = await transaction.execute(query)
     devices = result.scalars().all()
-    return devices
+    
+    encrypted_msg = encryption_helper.encrypt_msg({"devices":devices},client_id)
+    return encrypted_msg
 
 @post('/register')
 async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> dict:
@@ -119,7 +129,7 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
     return {'status_code': 201, 'status': 'success', 'key': key}
     
 
-
+# Add encryption
 @post('/devices/validate-key')
 async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> dict:
     query = select(Device).where(Device.mac_address == data.mac_address)
@@ -136,7 +146,7 @@ async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> d
     device.key = new_key
     return {'status': 'success'}
 
-
+# Might deprecate due to switch to TOTP
 @post('/devices/regenerate-key')
 async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) -> dict:
     query = select(Device).where(Device.mac_address == data.mac_address)
@@ -180,11 +190,19 @@ async def update_preferences(mac_address: str, data: UpdatePreferencesRequest, t
     return {'status': 'success', 'preferences': data.preferences}
 
 @get('/devices/all-mac-addresses')
-async def get_all_mac_addresses(transaction: AsyncSession) -> list[str]:
+async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
+
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+
     query = select(Device.mac_address)
     result = await transaction.execute(query)
     mac_addresses = result.scalars().all()
-    return mac_addresses
+
+    # Encrypting the mac addresses using client_id
+    encrypted_msg = encryption_helper.encrypt_msg({"mac_addresses": mac_addresses}, client_id)
+    return encrypted_msg
 
 # Extracted the logic of the function to reuse elsewhere
 async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
@@ -195,26 +213,36 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @get('/devices/{mac_address:str}/username')
-async def get_username(mac_address: str, transaction: AsyncSession) -> dict:
+async def get_username(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
+
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    
     username = await fetch_username(mac_address, transaction)
     if not username:
         return {'status_code': 404, 'detail': 'Device not found'}
-    return {'username': username}
+    return encryption_helper.encrypt_msg({'username': username}, client_id)
 
 @get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
-async def get_credentials(mac_address: str, transaction: AsyncSession) -> dict:
+async def get_credentials(request:Request, mac_address: str, transaction: AsyncSession) -> dict:
     mac_address = urllib.parse.unquote(mac_address)
+    
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
 
     query = select(Device.username, Device.password).where(Device.mac_address == mac_address)
 
     result = await transaction.execute(query)
     credentials = result.one_or_none()
-    print('Credentials:', credentials)
     if not credentials:
         return {'status_code': 404, 'detail': 'Device not found'}
 
     username, password = credentials
-    return {'username': username, 'password': password}
+    data = {'username': username, 'password': password}
+    encrypted_data = encryption_helper.encrypt_msg(data, client_id)
+    return encrypted_data
 
 @post('/registration/faceRec')
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
@@ -405,6 +433,21 @@ async def get_json_preferences(username: str, transaction: AsyncSession) -> dict
         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
 
+class KEMInitiateRequest(BaseModel):
+    client_id: str
+
+class KEMCompleteRequest(BaseModel):
+    client_id: str
+    ciphertext_b64: str
+
+@post('/kem/initiate')
+async def kem_initiate(data: KEMInitiateRequest) -> dict:
+    return encryption_helper.kem_initiate(data)
+
+@post('/kem/complete')
+async def kem_complete(data: KEMCompleteRequest) -> dict:
+    return encryption_helper.kem_complete(data)
+
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
     metadata=Base.metadata,
@@ -432,7 +475,9 @@ app = Litestar(
         get_credentials,
         register_face,
         get_json_preferences,
-        update_json_preferences
+        update_json_preferences,
+        kem_complete,
+        kem_initiate,
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],

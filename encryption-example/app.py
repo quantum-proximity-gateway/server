@@ -74,7 +74,7 @@ async def example_endpoint(data: EncryptedMessageRequest) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail='Failed to decrypt data.')
     print(f'Server received: {plaintext}')
-
+    
     response_text = f'Hello, Raspberry Pi #{data.client_id}!'
     nonce_b64, ciphertext_b64 = aesgcm_encrypt(response_text, shared_secret)
     return {'nonce_b64': nonce_b64, 'ciphertext_b64': ciphertext_b64}
