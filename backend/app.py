@@ -433,6 +433,21 @@ async def get_json_preferences(username: str, transaction: AsyncSession) -> dict
         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
 
+class KEMInitiateRequest(BaseModel):
+    client_id: str
+
+class KEMCompleteRequest(BaseModel):
+    client_id: str
+    ciphertext_b64: str
+
+@post('/kem/initiate')
+async def kem_initiate(data: KEMInitiateRequest) -> dict:
+    return encryption_helper.kem_initiate(data)
+
+@post('/kem/complete')
+async def kem_complete(data: KEMCompleteRequest) -> dict:
+    return encryption_helper.kem_complete(data)
+
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
     metadata=Base.metadata,
@@ -461,8 +476,8 @@ app = Litestar(
         register_face,
         get_json_preferences,
         update_json_preferences,
-        encryption_helper.kem_complete,
-        encryption_helper.kem_initiate,
+        kem_complete,
+        kem_initiate,
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],

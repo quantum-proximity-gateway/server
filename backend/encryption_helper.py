@@ -45,8 +45,7 @@ class EncryptionHelper():
         nonce_b64, ciphertext_b64 = aesgcm_encrypt(json.dumps(data), shared_secret)
         return {'nonce_b64': nonce_b64, 'ciphertext_b64': ciphertext_b64}
     
-    @post('/kem/initiate')
-    async def kem_initiate(self, data: KEMInitiateRequest) -> dict:
+    def kem_initiate(self, data: KEMInitiateRequest) -> dict:
         '''
         Initiate key exchange session. The server generates a KEM key pair and returns the public key.
         '''
@@ -57,8 +56,7 @@ class EncryptionHelper():
         public_key_b64 = base64.b64encode(public_key).decode()
         return {'public_key_b64': public_key_b64}
 
-    @post('/kem/complete')
-    async def kem_complete(self, data: KEMCompleteRequest) -> dict:
+    def kem_complete(self, data: KEMCompleteRequest) -> dict:
         '''
         Complete the key exchange. The client sends back the encapsulated shared secret that they have generated.
         '''
