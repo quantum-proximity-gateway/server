@@ -33,6 +33,8 @@ json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
 with open(json_path, 'r') as f:
     DEFAULT_PREFS = json.load(f)
 
+encryption_helper = EncryptionHelper()
+
 
 class Base(DeclarativeBase):
     pass
@@ -433,7 +435,9 @@ app = Litestar(
         get_credentials,
         register_face,
         get_json_preferences,
-        update_json_preferences
+        update_json_preferences,
+        encryption_helper.kem_complete,
+        encryption_helper.kem_initiate,
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
