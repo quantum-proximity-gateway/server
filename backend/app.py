@@ -90,7 +90,7 @@ async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncS
     async with db_session.begin():
         yield db_session
 
-
+# When is this endpoint used? - might need to delete
 @get('/devices')
 async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
 
@@ -146,7 +146,7 @@ async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> d
     device.key = new_key
     return {'status': 'success'}
 
-
+# Might deprecate due to switch to TOTP
 @post('/devices/regenerate-key')
 async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) -> dict:
     query = select(Device).where(Device.mac_address == data.mac_address)
@@ -213,11 +213,16 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @get('/devices/{mac_address:str}/username')
-async def get_username(mac_address: str, transaction: AsyncSession) -> dict:
+async def get_username(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
+
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    
     username = await fetch_username(mac_address, transaction)
     if not username:
         return {'status_code': 404, 'detail': 'Device not found'}
-    return {'username': username}
+    return encryption_helper.encrypt_msg({'username': username}, client_id)
 
 @get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
 async def get_credentials(request:Request, mac_address: str, transaction: AsyncSession) -> dict:
