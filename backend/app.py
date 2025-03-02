@@ -8,7 +8,7 @@ import subprocess
 import shutil
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
-from litestar import Litestar, get, post, put
+from litestar import Litestar, get, post, put, Request
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
 from litestar.enums import RequestEncodingType
@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
 
+
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
@@ -34,7 +35,6 @@ with open(json_path, 'r') as f:
     DEFAULT_PREFS = json.load(f)
 
 encryption_helper = EncryptionHelper()
-
 
 class Base(DeclarativeBase):
     pass
@@ -183,11 +183,19 @@ async def update_preferences(mac_address: str, data: UpdatePreferencesRequest, t
     return {'status': 'success', 'preferences': data.preferences}
 
 @get('/devices/all-mac-addresses')
-async def get_all_mac_addresses(transaction: AsyncSession) -> list[str]:
+async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
+    
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+
     query = select(Device.mac_address)
     result = await transaction.execute(query)
     mac_addresses = result.scalars().all()
-    return mac_addresses
+
+    # Encrypting the mac addresses using client_id
+    encrypted_msg = encryption_helper.encrypt_msg(mac_addresses, client_id)
+    return encrypted_msg
 
 # Extracted the logic of the function to reuse elsewhere
 async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
