@@ -4,10 +4,11 @@ import base64
 from aesgcm_encryption import aesgcm_encrypt, aesgcm_decrypt
 import json
 from litestar.exceptions import HTTPException
+import numpy as np
 
 class EncryptionHelper():
     def __init__(self):
-        self.KEM_ALGORITHM = 'Kyber512'
+        self.KEM_ALGORITHM = 'ML-KEM-512'
         self.kem_sessions = {}
         self.shared_secrets = {}
     
@@ -25,14 +26,12 @@ class EncryptionHelper():
         nonce_b64: str
         ciphertext_b64: str
 
-    def decrypt_msg(self, data: dict):
+    def decrypt_msg(self, data: EncryptedMessageRequest):
         try:
-            validated_data = self.EncryptedMessageRequest(**data)
-            shared_secret = self.shared_secrets.get(validated_data.client_id)
+            shared_secret = self.shared_secrets.get(data.client_id)
             if not shared_secret:
                 raise ValueError("Shared secret not found for client_id")
-
-            plaintext = aesgcm_decrypt(validated_data.nonce_b64, validated_data.ciphertext_b64, shared_secret)
+            plaintext = aesgcm_decrypt(data.nonce_b64, data.ciphertext_b64, shared_secret)
             return json.loads(plaintext)
         except Exception as e:
             raise RuntimeError(f"Failed to decrypt message: {e}")
@@ -67,6 +66,8 @@ class EncryptionHelper():
         try:
             ciphertext = base64.b64decode(data.ciphertext_b64)
             shared_secret = server_kem.decap_secret(ciphertext)
+            shared_secret_uint8 = np.frombuffer(shared_secret, dtype=np.uint8)
+            print(f"Shared secret (uint8array): {shared_secret_uint8}")
         except Exception as e:
             raise HTTPException(status_code=400, detail='Failed to decrypt data.')
         finally:

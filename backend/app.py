@@ -59,6 +59,10 @@ class RegisterDeviceRequest(BaseModel):
     username: str
     password: str
 
+class EncryptedMessageRequest(BaseModel):
+    client_id: str
+    nonce_b64: str
+    ciphertext_b64: str
 
 class ValidateKeyRequest(BaseModel):
     mac_address: str
@@ -106,14 +110,20 @@ async def get_devices(request: Request, transaction: AsyncSession) -> list[Devic
     return encrypted_msg
 
 @post('/register')
-async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> dict:
+async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+    if not data.client_id:
+        raise HTTPException(status_code=400, detail='client_id parameter is required')
+    print(data)
+    data = encryption_helper.decrypt_msg(data)
+    data = RegisterDeviceRequest(**data)
+    print(data)
     query = select(Device).where(Device.mac_address == data.mac_address.strip())
     result = await transaction.execute(query)
     existing_device = result.scalar_one_or_none()
 
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
-
+    # We need to think of a way to encrypt the password on the db
     key = generate_key()
     device = Device(
         mac_address=data.mac_address.strip(),
