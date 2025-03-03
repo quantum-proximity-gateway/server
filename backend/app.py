@@ -113,22 +113,23 @@ async def get_devices(request: Request, transaction: AsyncSession) -> list[Devic
 async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     if not data.client_id:
         raise HTTPException(status_code=400, detail='client_id parameter is required')
-    print(data)
-    data = encryption_helper.decrypt_msg(data)
-    data = RegisterDeviceRequest(**data)
-    print(data)
-    query = select(Device).where(Device.mac_address == data.mac_address.strip())
+    client_id = data.client_id
+    decryped_data = encryption_helper.decrypt_msg(data)
+    validated_data = RegisterDeviceRequest(**decryped_data)
+
+    query = select(Device).where(Device.mac_address == validated_data.mac_address.strip())
     result = await transaction.execute(query)
     existing_device = result.scalar_one_or_none()
 
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
-    # We need to think of a way to encrypt the password on the db
+    
+    # TODO: Need to think of a way to encrypt the password on the db
     key = generate_key()
     device = Device(
-        mac_address=data.mac_address.strip(),
-        username=data.username,
-        password=data.password,
+        mac_address=validated_data.mac_address.strip(),
+        username=validated_data.username,
+        password=validated_data.password,
         key=key,
     )
     try:
@@ -136,7 +137,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     except:
         print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
-    return {'status_code': 201, 'status': 'success', 'key': key}
+    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success', 'key': key}, client_id)
     
 
 # Add encryption
