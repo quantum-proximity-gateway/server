@@ -59,6 +59,10 @@ class RegisterDeviceRequest(BaseModel):
     username: str
     password: str
 
+class EncryptedMessageRequest(BaseModel):
+    client_id: str
+    nonce_b64: str
+    ciphertext_b64: str
 
 class ValidateKeyRequest(BaseModel):
     mac_address: str
@@ -106,19 +110,26 @@ async def get_devices(request: Request, transaction: AsyncSession) -> list[Devic
     return encrypted_msg
 
 @post('/register')
-async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == data.mac_address.strip())
+async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+    if not data.client_id:
+        raise HTTPException(status_code=400, detail='client_id parameter is required')
+    client_id = data.client_id
+    decryped_data = encryption_helper.decrypt_msg(data)
+    validated_data = RegisterDeviceRequest(**decryped_data)
+
+    query = select(Device).where(Device.mac_address == validated_data.mac_address.strip())
     result = await transaction.execute(query)
     existing_device = result.scalar_one_or_none()
 
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
-
+    
+    # TODO: Need to think of a way to encrypt the password on the db
     key = generate_key()
     device = Device(
-        mac_address=data.mac_address.strip(),
-        username=data.username,
-        password=data.password,
+        mac_address=validated_data.mac_address.strip(),
+        username=validated_data.username,
+        password=validated_data.password,
         key=key,
     )
     try:
@@ -126,7 +137,7 @@ async def register_device(data: RegisterDeviceRequest, transaction: AsyncSession
     except:
         print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
-    return {'status_code': 201, 'status': 'success', 'key': key}
+    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success', 'key': key}, client_id)
     
 
 # Add encryption
