@@ -73,7 +73,6 @@ class RegenerateKeyRequest(BaseModel):
 
 
 class UpdatePreferencesRequest(BaseModel):
-    client_id: str
     preferences: dict
 
 class FaceRegistrationRequest(BaseModel):
@@ -174,7 +173,11 @@ async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) 
 
 
 @get('/devices/{mac_address:str}/preferences')
-async def get_preferences(mac_address: str, transaction: AsyncSession) -> dict:
+async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+
     query = select(Device).where(Device.mac_address == mac_address)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
@@ -184,24 +187,24 @@ async def get_preferences(mac_address: str, transaction: AsyncSession) -> dict:
     
     try:
         parsed_preferences = json.loads(device.preferences)
-        return {'preferences': parsed_preferences}
+        return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
     except json.JSONDecodeError:
         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
 
 @put('/devices/{mac_address:str}/preferences')
-async def update_preferences(mac_address: str, data: UpdatePreferencesRequest, transaction: AsyncSession) -> dict:
+async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     if not data.client_id:
         raise HTTPException(status_code=400, detail='client_id parameter is required')
-    
+    decryped_data = encryption_helper.decrypt_msg(data)
+    validated_data = UpdatePreferencesRequest(**decryped_data)
     query = select(Device).where(Device.mac_address == mac_address)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
     if not device:
         return {'status_code': 404, 'detail': 'Device not found'}
 
-    device.preferences = json.dumps(data.preferences)
-    return encryption_helper.encrypt_msg({'status': 'success', 'preferences': data.preferences}, data.client_id)
+    return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
@@ -416,8 +419,15 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
 @post('/preferences/update')
-async def update_json_preferences(data: UpdateJSONPreferencesRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.username == data.username)
+async def update_json_preferences(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+    client_id = data.client_id
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+
+    decrypted_data = encryption_helper.decrypt_msg(data)
+    validated_data = UpdateJSONPreferencesRequest(**decrypted_data)
+
+    query = select(Device).where(Device.username == validated_data.username)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
 
@@ -425,14 +435,18 @@ async def update_json_preferences(data: UpdateJSONPreferencesRequest, transactio
         return {'status_code': 404, 'detail': 'Device not found'}
 
     try:
-        device.preferences = data.preferences
+        device.preferences = validated_data.preferences
         await transaction.commit()
-        return {'status': 'success', 'preferences': data.preferences}
+        return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, client_id)
     except Exception as e:
         return {'status_code': 500, 'detail': 'Failed to update preferences'}
 
 @get('/preferences/{username:str}')
-async def get_json_preferences(username: str, transaction: AsyncSession) -> dict:
+async def get_json_preferences(request: Request, username: str, transaction: AsyncSession) -> dict:
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    
     query = select(Device).where(Device.username == username)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
@@ -442,7 +456,7 @@ async def get_json_preferences(username: str, transaction: AsyncSession) -> dict
     
     try:
         parsed_preferences = device.preferences
-        return {'preferences': parsed_preferences}
+        return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
     except Exception as e:
         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
