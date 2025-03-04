@@ -73,6 +73,7 @@ class RegenerateKeyRequest(BaseModel):
 
 
 class UpdatePreferencesRequest(BaseModel):
+    client_id: str
     preferences: dict
 
 class FaceRegistrationRequest(BaseModel):
@@ -190,15 +191,17 @@ async def get_preferences(mac_address: str, transaction: AsyncSession) -> dict:
 
 @put('/devices/{mac_address:str}/preferences')
 async def update_preferences(mac_address: str, data: UpdatePreferencesRequest, transaction: AsyncSession) -> dict:
+    if not data.client_id:
+        raise HTTPException(status_code=400, detail='client_id parameter is required')
+    
     query = select(Device).where(Device.mac_address == mac_address)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
-
     if not device:
         return {'status_code': 404, 'detail': 'Device not found'}
 
     device.preferences = json.dumps(data.preferences)
-    return {'status': 'success', 'preferences': data.preferences}
+    return encryption_helper.encrypt_msg({'status': 'success', 'preferences': data.preferences}, data.client_id)
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
