@@ -261,6 +261,65 @@ async def get_credentials(request:Request, mac_address: str, transaction: AsyncS
     encrypted_data = encryption_helper.encrypt_msg(data, client_id)
     return encrypted_data
 
+@post('/preferences/update')
+async def update_json_preferences(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+    client_id = data.client_id
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+
+    decrypted_data = encryption_helper.decrypt_msg(data)
+    validated_data = UpdateJSONPreferencesRequest(**decrypted_data)
+
+    query = select(Device).where(Device.username == validated_data.username)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        return {'status_code': 404, 'detail': 'Device not found'}
+
+    try:
+        device.preferences = validated_data.preferences
+        await transaction.commit()
+        return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, client_id)
+    except Exception as e:
+        return {'status_code': 500, 'detail': 'Failed to update preferences'}
+
+@get('/preferences/{username:str}')
+async def get_json_preferences(request: Request, username: str, transaction: AsyncSession) -> dict:
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    
+    query = select(Device).where(Device.username == username)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        return {'status_code': 404, 'detail': 'Device not found'}
+    
+    try:
+        parsed_preferences = device.preferences
+        return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
+    except Exception as e:
+        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
+
+
+class KEMInitiateRequest(BaseModel):
+    client_id: str
+
+class KEMCompleteRequest(BaseModel):
+    client_id: str
+    ciphertext_b64: str
+
+@post('/kem/initiate')
+async def kem_initiate(data: KEMInitiateRequest) -> dict:
+    return encryption_helper.kem_initiate(data)
+
+@post('/kem/complete')
+async def kem_complete(data: KEMCompleteRequest) -> dict:
+    return encryption_helper.kem_complete(data)
+
+
 @post('/registration/faceRec')
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
 
@@ -417,64 +476,6 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
-
-@post('/preferences/update')
-async def update_json_preferences(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
-    client_id = data.client_id
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
-
-    decrypted_data = encryption_helper.decrypt_msg(data)
-    validated_data = UpdateJSONPreferencesRequest(**decrypted_data)
-
-    query = select(Device).where(Device.username == validated_data.username)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
-
-    try:
-        device.preferences = validated_data.preferences
-        await transaction.commit()
-        return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, client_id)
-    except Exception as e:
-        return {'status_code': 500, 'detail': 'Failed to update preferences'}
-
-@get('/preferences/{username:str}')
-async def get_json_preferences(request: Request, username: str, transaction: AsyncSession) -> dict:
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
-    
-    query = select(Device).where(Device.username == username)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
-    
-    try:
-        parsed_preferences = device.preferences
-        return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
-    except Exception as e:
-        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
-
-
-class KEMInitiateRequest(BaseModel):
-    client_id: str
-
-class KEMCompleteRequest(BaseModel):
-    client_id: str
-    ciphertext_b64: str
-
-@post('/kem/initiate')
-async def kem_initiate(data: KEMInitiateRequest) -> dict:
-    return encryption_helper.kem_initiate(data)
-
-@post('/kem/complete')
-async def kem_complete(data: KEMCompleteRequest) -> dict:
-    return encryption_helper.kem_complete(data)
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
