@@ -167,4 +167,3 @@ cython_debug/
 /backend/db.sqlite
 
 llama-cpp-example/models
-backend/models
