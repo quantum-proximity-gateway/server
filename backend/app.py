@@ -135,6 +135,11 @@ class GenerateResponseRequest(BaseModel):
     model: str | None = None
 
 
+class GenerateResponseResponse(BaseModel):
+    message: str
+    command: str
+
+
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
 
@@ -150,7 +155,7 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @post('/generate-response')
-async def generate_response(data: GenerateResponseRequest) -> dict:
+async def generate_response(data: GenerateResponseRequest) -> GenerateResponseResponse:
     model_name = data.model
     if not model_name:
         model_name = default_model
@@ -560,6 +565,7 @@ app = Litestar(
         update_json_preferences,
         kem_complete,
         kem_initiate,
+        generate_response,
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
