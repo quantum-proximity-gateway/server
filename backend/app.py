@@ -38,14 +38,29 @@ with open(json_path, 'r') as f:
 encryption_helper = EncryptionHelper()
 
 MODELS_DIR = 'models'
-models = {}
-for filename in os.listdir(MODELS_DIR):
-    model_path = os.path.join(MODELS_DIR, filename)
-    if not os.path.isfile(model_path):
-        continue
-    models[filename] = LLM(model_path)
+with open('system_prompt.txt', 'r') as file:
+    SYSTEM_PROMPT = file.read()
 
-default_model = 'ibm-granite_granite-3.2-8b-instruct-Q6_K_L.gguf'
+def create_models(models_dir: str, system_prompt: str | None=None) -> dict[str, LLM]:
+    '''
+    Args:
+        models_dir: String which represents the relative directory of the models
+        system_prompt: String which is the system prompt that is used in each prompt
+
+    Returns a dictionary of the model name, and initialisation of that model.
+    '''
+    models = {}
+    for filename in os.listdir(models_dir):
+        model_path = os.path.join(models_dir, filename)
+        if not os.path.isfile(model_path):
+            continue
+        model = LLM(model_path)
+        model.set_system_prompt(system_prompt)
+        models[filename] = model
+    return models
+
+models = create_models(MODELS_DIR, SYSTEM_PROMPT)
+current_model = 'ibm-granite_granite-3.2-8b-instruct-Q6_K_L.gguf'
 
 
 class Base(DeclarativeBase):
@@ -114,8 +129,17 @@ class UpdateJSONPreferencesRequest(BaseModel):
     preferences: dict
 
 
+class GenerateResponseRequest(BaseModel):
+
+
+
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
+
+@post('/generate-response')
+def generate_response(user_prompt: str) -> str:
+    model = models[current_model]
+    return model.generate_response(user_prompt)
 
 async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     async with db_session.begin():
