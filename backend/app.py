@@ -150,7 +150,7 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @post('/generate-response')
-def generate_response(data: GenerateResponseRequest) -> dict:
+async def generate_response(data: GenerateResponseRequest) -> dict:
     model_name = data.model
     if not model_name:
         model_name = default_model
