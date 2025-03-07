@@ -13,20 +13,23 @@ class LLM:
             n_ctx=2048,
             verbose=False,
         )
-        self.custom_instruction = None
+        self.system_prompt = None
 
-    def set_custom_instruction(self, instruction: str | None) -> None:
+    def set_system_prompt(self, system_prompt: str | None) -> None:
         '''
-        Set custom instruction which is prepended to each prompt.
+        Set system_prompt used in each prompt.
         '''
-        self.custom_instruction = instruction
+        self.system_prompt = system_prompt
 
-    def generate_response(self, prompt: str) -> str:
+    def generate_response(self, user_prompt: str) -> str:
         '''
         Generate a response for a given prompt.
         '''
-        if self.custom_instruction:
-            prompt = f'{self.custom_instruction}\n\n{prompt}'
+        prompt = f'''
+<|start_of_role|>system<|end_of_role|>{self.system_prompt}<|end_of_text|>
+<|start_of_role|>user<|end_of_role|>{user_prompt}<|end_of_text|>
+<|start_of_role|>assistant<|end_of_role|>
+'''
 
         output = self.llm(
             prompt,
