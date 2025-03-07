@@ -1,4 +1,5 @@
 from llama_cpp import Llama
+from threading import Lock
 
 
 class LLM:
@@ -14,6 +15,7 @@ class LLM:
             verbose=False,
         )
         self.system_prompt = None
+        self.lock = Lock()
 
     def set_system_prompt(self, system_prompt: str | None) -> None:
         '''
@@ -31,9 +33,10 @@ class LLM:
 <|start_of_role|>assistant<|end_of_role|>
 '''
 
-        output = self.llm(
-            prompt,
-            max_tokens=50,
-        )
+        with self.lock:
+            output = self.llm(
+                prompt,
+                max_tokens=50,
+            )
 
         return output['choices'][0]['text']
