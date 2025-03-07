@@ -59,8 +59,9 @@ def create_models(models_dir: str, system_prompt: str | None=None) -> dict[str, 
         models[filename] = model
     return models
 
+# TODO: Adjust system prompt for each user - each user may have different settings currently set, need to query database
 models = create_models(MODELS_DIR, SYSTEM_PROMPT)
-current_model = 'ibm-granite_granite-3.2-8b-instruct-Q6_K_L.gguf'
+default_model = 'ibm-granite_granite-3.2-8b-instruct-Q6_K_L.gguf'
 
 
 class Base(DeclarativeBase):
@@ -130,16 +131,12 @@ class UpdateJSONPreferencesRequest(BaseModel):
 
 
 class GenerateResponseRequest(BaseModel):
-
+    prompt: str
+    model: str | None = None
 
 
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
-
-@post('/generate-response')
-def generate_response(user_prompt: str) -> str:
-    model = models[current_model]
-    return model.generate_response(user_prompt)
 
 async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     async with db_session.begin():
@@ -152,10 +149,30 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     username = result.scalar_one_or_none()
     return username
 
+@post('/generate-response')
+def generate_response(data: GenerateResponseRequest) -> dict:
+    model_name = data.model
+    if not model_name:
+        model_name = default_model
+    elif model_name not in models:
+        raise HTTPException(status_code=404, detail=f'Model {model} is not supported')
+    
+    model = models[model_name]
+    response = model.generate_response(data.prompt)
+    
+    try:
+        response_dict = json.loads(response)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f'Model did not return valid JSON')
+    
+    if not set(response_dict.keys()) == {'message', 'command'}:
+        raise HTTPException(status_code=500, detail=f'Model JSON response keys do not match expected keys')
+
+    return response_dict
+
 # When is this endpoint used? - might need to delete
 @get('/devices')
 async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
-
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -289,7 +306,7 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
 @get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
-async def get_credentials(request:Request, mac_address: str, transaction: AsyncSession) -> dict:
+async def get_credentials(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
     mac_address = urllib.parse.unquote(mac_address)
     
     client_id = request.query_params.get('client_id')
