@@ -36,7 +36,7 @@ class LLM:
         with self.lock:
             output = self.llm(
                 prompt,
-                max_tokens=50,
+                max_tokens=128,
             )
 
         return output['choices'][0]['text']
