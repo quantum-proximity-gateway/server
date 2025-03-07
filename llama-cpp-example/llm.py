@@ -8,6 +8,10 @@ class LLM:
         '''
         self.llm = Llama(
             model_path=model_path,
+            n_threads=6,
+            n_batch=512,
+            n_ctx=2048,
+            verbose=False,
         )
         self.custom_instruction = None
 
