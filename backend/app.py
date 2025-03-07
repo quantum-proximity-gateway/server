@@ -6,6 +6,7 @@ import os
 import cv2
 import subprocess
 import shutil
+import asyncio
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, put, Request
@@ -159,11 +160,11 @@ async def generate_response(data: GenerateResponseRequest) -> GenerateResponseRe
     model_name = data.model
     if not model_name:
         model_name = default_model
-    elif model_name not in models:
-        raise HTTPException(status_code=404, detail=f'Model {model} is not supported')
-    
+    if model_name not in models:
+        raise HTTPException(status_code=404, detail=f'Model {model_name} is not supported')
+
     model = models[model_name]
-    response = model.generate_response(data.prompt)
+    response = await asyncio.to_thread(model.generate_response, data.prompt)
     
     try:
         response_dict = json.loads(response)
