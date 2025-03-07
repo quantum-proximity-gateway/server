@@ -36,6 +36,7 @@ with open(json_path, 'r') as f:
 
 encryption_helper = EncryptionHelper()
 
+
 class Base(DeclarativeBase):
     pass
 
@@ -59,14 +60,17 @@ class RegisterDeviceRequest(BaseModel):
     username: str
     password: str
 
+
 class EncryptedMessageRequest(BaseModel):
     client_id: str
     nonce_b64: str
     ciphertext_b64: str
 
+
 class ValidateKeyRequest(BaseModel):
     mac_address: str
     key: str
+
 
 class RegenerateKeyRequest(BaseModel):
     mac_address: str
@@ -75,24 +79,43 @@ class RegenerateKeyRequest(BaseModel):
 class UpdatePreferencesRequest(BaseModel):
     preferences: dict
 
+
+class KEMInitiateRequest(BaseModel):
+    client_id: str
+
+
+class KEMCompleteRequest(BaseModel):
+    client_id: str
+    ciphertext_b64: str
+
+
 class FaceRegistrationRequest(BaseModel):
     mac_address: str
     video: UploadFile
 
+
     class Config(ConfigDict):
         arbitrary_types_allowed = True
+
 
 class UpdateJSONPreferencesRequest(BaseModel):
     username: str
     preferences: dict
 
+
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
-
 
 async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     async with db_session.begin():
         yield db_session
+
+async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
+    mac_address = urllib.parse.unquote(mac_address)
+    query = select(Device.username).where(Device.mac_address == mac_address)
+    result = await transaction.execute(query)
+    username = result.scalar_one_or_none()
+    return username
 
 # When is this endpoint used? - might need to delete
 @get('/devices')
@@ -138,9 +161,8 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success', 'key': key}, client_id)
-    
 
-# Add encryption
+# TODO: Add encryption
 @post('/devices/validate-key')
 async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> dict:
     query = select(Device).where(Device.mac_address == data.mac_address)
@@ -171,7 +193,6 @@ async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) 
     device.key = new_key
     return {'status': 'success'}
 
-
 @get('/devices/{mac_address:str}/preferences')
 async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
     client_id = request.query_params.get('client_id')
@@ -190,7 +211,6 @@ async def get_preferences(request: Request, mac_address: str, transaction: Async
         return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
     except json.JSONDecodeError:
         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
-
 
 @put('/devices/{mac_address:str}/preferences')
 async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
@@ -220,14 +240,6 @@ async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> 
     # Encrypting the mac addresses using client_id
     encrypted_msg = encryption_helper.encrypt_msg({"mac_addresses": mac_addresses}, client_id)
     return encrypted_msg
-
-# Extracted the logic of the function to reuse elsewhere
-async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
-    mac_address = urllib.parse.unquote(mac_address)
-    query = select(Device.username).where(Device.mac_address == mac_address)
-    result = await transaction.execute(query)
-    username = result.scalar_one_or_none()
-    return username
 
 @get('/devices/{mac_address:str}/username')
 async def get_username(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
@@ -303,14 +315,6 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     except Exception as e:
         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
-
-class KEMInitiateRequest(BaseModel):
-    client_id: str
-
-class KEMCompleteRequest(BaseModel):
-    client_id: str
-    ciphertext_b64: str
-
 @post('/kem/initiate')
 async def kem_initiate(data: KEMInitiateRequest) -> dict:
     return encryption_helper.kem_initiate(data)
@@ -318,7 +322,6 @@ async def kem_initiate(data: KEMInitiateRequest) -> dict:
 @post('/kem/complete')
 async def kem_complete(data: KEMCompleteRequest) -> dict:
     return encryption_helper.kem_complete(data)
-
 
 @post('/registration/faceRec')
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
@@ -474,8 +477,6 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     return {'status': 'success', 'video_path': video_path}
 
-    #TODO: 2.0
-    # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
 db_config = SQLAlchemyAsyncConfig(
     connection_string='sqlite+aiosqlite:///db.sqlite',
