@@ -6,27 +6,42 @@ import json
 from litestar.exceptions import HTTPException
 import numpy as np
 
-
-class KEMInitiateRequest(BaseModel):
-    client_id: str
-
-
-class KEMCompleteRequest(BaseModel):
-    client_id: str
-    ciphertext_b64: str
-
-
-class EncryptedMessageRequest(BaseModel):
-    client_id: str
-    nonce_b64: str
-    ciphertext_b64: str
-
-
 class EncryptionHelper():
     def __init__(self):
         self.KEM_ALGORITHM = 'ML-KEM-512'
         self.kem_sessions = {}
         self.shared_secrets = {}
+    
+    class KEMInitiateRequest(BaseModel):
+        client_id: str
+
+
+    class KEMCompleteRequest(BaseModel):
+        client_id: str
+        ciphertext_b64: str
+
+
+    class EncryptedMessageRequest(BaseModel):
+        client_id: str
+        nonce_b64: str
+        ciphertext_b64: str
+
+    def decrypt_msg(self, data: EncryptedMessageRequest):
+        try:
+            shared_secret = self.shared_secrets.get(data.client_id)
+            if not shared_secret:
+                raise ValueError("Shared secret not found for client_id")
+            plaintext = aesgcm_decrypt(data.nonce_b64, data.ciphertext_b64, shared_secret)
+            return json.loads(plaintext)
+        except Exception as e:
+            raise RuntimeError(f"Failed to decrypt message: {e}")
+
+    def encrypt_msg(self, data: dict, client_id):
+        shared_secret = self.shared_secrets.get(client_id)
+        if not shared_secret:
+            raise ValueError("Shared secret not found for client_id")
+        nonce_b64, ciphertext_b64 = aesgcm_encrypt(json.dumps(data), shared_secret)
+        return {'nonce_b64': nonce_b64, 'ciphertext_b64': ciphertext_b64}
     
     def kem_initiate(self, data: KEMInitiateRequest) -> dict:
         '''
@@ -60,20 +75,3 @@ class EncryptionHelper():
         
         self.shared_secrets[data.client_id] = shared_secret
         return {'status': 'success'}
-
-    def encrypt_msg(self, data: dict, client_id):
-        shared_secret = self.shared_secrets.get(client_id)
-        if not shared_secret:
-            raise ValueError("Shared secret not found for client_id")
-        nonce_b64, ciphertext_b64 = aesgcm_encrypt(json.dumps(data), shared_secret)
-        return {'nonce_b64': nonce_b64, 'ciphertext_b64': ciphertext_b64}
-    
-    def decrypt_msg(self, data: EncryptedMessageRequest):
-        try:
-            shared_secret = self.shared_secrets.get(data.client_id)
-            if not shared_secret:
-                raise ValueError("Shared secret not found for client_id")
-            plaintext = aesgcm_decrypt(data.nonce_b64, data.ciphertext_b64, shared_secret)
-            return json.loads(plaintext)
-        except Exception as e:
-            raise RuntimeError(f"Failed to decrypt message: {e}")
