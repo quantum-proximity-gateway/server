@@ -26,6 +26,7 @@ from github import Github, GithubException
 from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
+from llm import LLM
 
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
@@ -35,6 +36,16 @@ with open(json_path, 'r') as f:
     DEFAULT_PREFS = json.load(f)
 
 encryption_helper = EncryptionHelper()
+
+MODELS_DIR = 'models'
+models = {}
+for filename in os.listdir(MODELS_DIR):
+    model_path = os.path.join(MODELS_DIR, filename)
+    if not os.path.isfile(model_path):
+        continue
+    models[filename] = LLM(model_path)
+
+default_model = 'ibm-granite_granite-3.2-8b-instruct-Q6_K_L.gguf'
 
 
 class Base(DeclarativeBase):
