@@ -65,14 +65,6 @@ class EncryptedMessageRequest(BaseModel):
     nonce_b64: str
     ciphertext_b64: str
 
-class ValidateKeyRequest(BaseModel):
-    mac_address: str
-    key: str
-
-class RegenerateKeyRequest(BaseModel):
-    mac_address: str
-
-
 class UpdatePreferencesRequest(BaseModel):
     preferences: dict
 
@@ -138,39 +130,6 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success', 'key': key}, client_id)
-    
-
-# Add encryption
-@post('/devices/validate-key')
-async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == data.mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
-    
-    if device.key != data.key:
-        return {'status_code': 401, 'detail': 'Invalid key'}
-    
-    new_key = generate_key()
-    device.key = new_key
-    return {'status': 'success'}
-
-# Might deprecate due to switch to TOTP
-@post('/devices/regenerate-key')
-async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == data.mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
-
-    new_key = generate_key()
-    device.key = new_key
-    return {'status': 'success'}
-
 
 @get('/devices/{mac_address:str}/preferences')
 async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
@@ -241,10 +200,10 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
         return {'status_code': 404, 'detail': 'Device not found'}
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
-@get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
-async def get_credentials(request:Request, mac_address: str, transaction: AsyncSession) -> dict:
+@get('/devices/{mac_address:str}/credentials') 
+async def get_credentials(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
     mac_address = urllib.parse.unquote(mac_address)
-    
+    # validate TOTP here
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -495,8 +454,6 @@ app = Litestar(
     route_handlers=[
         get_devices,
         register_device,
-        validate_key,
-        regenerate_key,
         get_preferences,
         update_preferences,
         get_all_mac_addresses,
