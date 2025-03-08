@@ -46,7 +46,7 @@ class Device(Base):
     mac_address: Mapped[str] = mapped_column(primary_key=True)
     username: Mapped[str]
     password: Mapped[str]
-    key: Mapped[str]
+    secret: Mapped[str] # Shared secret used in TOTP, maybe encrypt?
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
         MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
@@ -58,6 +58,7 @@ class RegisterDeviceRequest(BaseModel):
     mac_address: str
     username: str
     password: str
+    secret: str
 
 class EncryptedMessageRequest(BaseModel):
     client_id: str
@@ -125,12 +126,11 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         raise HTTPException(status_code=409, detail='Device already registered')
     
     # TODO: Need to think of a way to encrypt the password on the db
-    key = generate_key()
     device = Device(
         mac_address=validated_data.mac_address.strip(),
         username=validated_data.username,
         password=validated_data.password,
-        key=key,
+        secret=validated_data.secret,
     )
     try:
         transaction.add(device)
