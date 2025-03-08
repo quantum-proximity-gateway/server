@@ -88,17 +88,17 @@ class CredentialsRequest(BaseModel):
     mac_address: str
     totp: str
 
-async def generate_totp(mac_address: str ,transaction: AsyncSession) -> str:
+async def generate_totp(mac_address: str ,transaction: AsyncSession) -> int:
     query = select(Device.secret, Device.totp_timestamp).where(Device.mac_address == mac_address)
     result = await transaction.execute(query)
     results = result.one_or_none()
     if not results:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=404, detail='Device not found')
     secret, timestamp = results
     return totp(secret, timestamp)
 
 
-def totp(secret: str, timestamp: int):
+def totp(secret: str, timestamp: int) -> int:
     time_now = time.time()
     time_elapsed = int(time_now - timestamp)
     TOTP_DIGITS = 6
@@ -172,7 +172,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     except:
         print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
-    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success', 'key': key}, client_id)
+    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
 @get('/devices/{mac_address:str}/preferences')
 async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
@@ -245,21 +245,23 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
 
 @put('/devices/credentials') 
 async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
-    # validate TOTP here
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = CredentialsRequest(**decrypted_data)
+    if validated_data.totp == generate_totp(validated_data.mac_address, transaction):
+        query = select(Device.username, Device.password).where(Device.mac_address == validated_data.mac_address)
 
-    query = select(Device.username, Device.password).where(Device.mac_address == validated_data.mac_address)
+        result = await transaction.execute(query)
+        credentials = result.one_or_none()
+        if not credentials:
+            raise HTTPException(status_code=404, detail="Device not found.")
 
-    result = await transaction.execute(query)
-    credentials = result.one_or_none()
-    if not credentials:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        username, password = credentials
+        data = {'username': username, 'password': password}
+        encrypted_data = encryption_helper.encrypt_msg(data, data.client_id)
+        return encrypted_data
+    else:
+        raise HTTPException(status_code=500, detail='TOTP does not match')
 
-    username, password = credentials
-    data = {'username': username, 'password': password}
-    encrypted_data = encryption_helper.encrypt_msg(data, data.client_id)
-    return encrypted_data
 
 @post('/preferences/update')
 async def update_json_preferences(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
