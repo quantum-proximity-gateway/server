@@ -79,6 +79,10 @@ class UpdateJSONPreferencesRequest(BaseModel):
     username: str
     preferences: dict
 
+class CredentialsRequest(BaseModel):
+    mac_address: str
+    totp: str
+
 def generate_key(length: int = 32) -> str:
     return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
 
@@ -200,15 +204,13 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
         return {'status_code': 404, 'detail': 'Device not found'}
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
-@get('/devices/{mac_address:str}/credentials') 
-async def get_credentials(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
-    mac_address = urllib.parse.unquote(mac_address)
+@put('/devices/credentials') 
+async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     # validate TOTP here
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    decrypted_data = encryption_helper.decrypt_msg(data)
+    validated_data = CredentialsRequest(**decrypted_data)
 
-    query = select(Device.username, Device.password).where(Device.mac_address == mac_address)
+    query = select(Device.username, Device.password).where(Device.mac_address == validated_data.mac_address)
 
     result = await transaction.execute(query)
     credentials = result.one_or_none()
@@ -217,7 +219,7 @@ async def get_credentials(request: Request, mac_address: str, transaction: Async
 
     username, password = credentials
     data = {'username': username, 'password': password}
-    encrypted_data = encryption_helper.encrypt_msg(data, client_id)
+    encrypted_data = encryption_helper.encrypt_msg(data, data.client_id)
     return encrypted_data
 
 @post('/preferences/update')
