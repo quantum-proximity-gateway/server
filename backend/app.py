@@ -88,10 +88,6 @@ class CredentialsRequest(BaseModel):
     mac_address: str
     totp: str
 
-def generate_key(length: int = 32) -> str:
-    return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
-
-
 async def generate_totp(mac_address: str ,transaction: AsyncSession) -> str:
     query = select(Device.secret, Device.totp_timestamp).where(Device.mac_address == mac_address)
     result = await transaction.execute(query)
@@ -99,6 +95,7 @@ async def generate_totp(mac_address: str ,transaction: AsyncSession) -> str:
     if not results:
         return {'status_code': 404, 'detail': 'Device not found'}
     secret, timestamp = results
+    return totp(secret, timestamp)
 
 
 def totp(secret: str, timestamp: int):
