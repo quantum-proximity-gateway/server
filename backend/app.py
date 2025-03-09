@@ -227,7 +227,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
 #     except TypeError as e:
 #         raise HTTPException(status_code=400, detail='Invalid JSON')
 
-#     return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
+#     return encryption_helper.encrypt_msg({'preferences': validated_data.preferences}, data.client_id)
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
@@ -289,7 +289,7 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
     try:
         device.preferences = validated_data.preferences
         await transaction.commit()
-        return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, client_id)
+        return encryption_helper.encrypt_msg({'preferences': validated_data.preferences}, client_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail='Failed to update preferences')
 
