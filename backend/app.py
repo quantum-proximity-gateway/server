@@ -49,7 +49,6 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
-    # preferences: Mapped[str] = '{}'
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
         MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
