@@ -162,7 +162,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         transaction.add(device)
     except:
         raise HTTPException(status_code=400, detail='Device already registered')
-    return encryption_helper.encrypt_msg({'key': key}, client_id)
+    return encryption_helper.encrypt_msg({'key': device.key}, client_id)
 
 # # Add encryption
 # @post('/devices/validate-key')
