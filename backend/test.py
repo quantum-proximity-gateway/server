@@ -8,6 +8,8 @@ import os
 
 
 TEST_DB_FILENAME = 'test_db.sqlite'
+if os.path.isfile(TEST_DB_FILENAME):
+    os.remove(TEST_DB_FILENAME)
 
 TEST_CLIENT_ID_1 = '1'
 TEST_SHARED_SECRET_1 = b'\xbd\xb4\xe9\xf7\x91\xf3\x97\x90\xc1\x93i\xe2\xc9\x0b\xa3\x115\xac\xcb<\xae\x96\xd6\x16\x88\x18\xc8\xd9FRG?'
@@ -20,12 +22,11 @@ encryption_helper.shared_secrets[TEST_CLIENT_ID_2] = TEST_SHARED_SECRET_2
 
 @pytest_asyncio.fixture(scope='function')
 async def test_client() -> AsyncIterator[AsyncTestClient[Litestar]]:
-    # Delete test database, if it exists, before next test 
-    if os.path.isfile(TEST_DB_FILENAME):
-        os.remove(TEST_DB_FILENAME)
-
     async with AsyncTestClient(app=app) as client:
         yield client
+
+    # Delete test database after each test
+    os.remove(TEST_DB_FILENAME)
 
 @pytest.mark.asyncio
 async def test_get_devices(test_client: AsyncTestClient[Litestar]) -> None:
@@ -99,3 +100,29 @@ async def test_get_all_mac_addresses(test_client: AsyncTestClient) -> None:
     response = await test_client.get(f'/devices/all-mac-addresses?client_id={TEST_CLIENT_ID_1}')
     response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
     assert set(response_data['mac_addresses']) == set(['00:11:22:33:44:55', '11:22:33:44:55:66'])
+
+@pytest.mark.asyncio
+async def test_get_username(test_client: AsyncTestClient) -> None:
+    # Register a device
+    data = {
+        'mac_address': '00:11:22:33:44:55',
+        'username': 'john_doe',
+        'password': 'password'
+    }
+    encrypted_data = {'client_id': TEST_CLIENT_ID_1} | encryption_helper.encrypt_msg(data, TEST_CLIENT_ID_1)
+    _ = await test_client.post('/register', json=encrypted_data)
+
+    # Fetch the username
+    mac_address = '00:11:22:33:44:55'
+    response = await test_client.get(f'/devices/{mac_address}/username?client_id={TEST_CLIENT_ID_1}')
+    response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
+    assert response_data['username'] == 'john_doe'
+
+    # Test that error is returned when no query parameter is given
+    mac_address = '11:22:33:44:55:66'
+    response = await test_client.get(f'/devices/{mac_address}/username')
+    assert response.status_code == 400
+
+    # Test that error is returned when the client id given is not registered
+    response = await test_client.get(f'/devices/{mac_address}/username?client_id={TEST_CLIENT_ID_2}')
+    assert response.status_code == 404
