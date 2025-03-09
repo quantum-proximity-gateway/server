@@ -295,13 +295,13 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     device = result.scalar_one_or_none()
 
     if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        return HTTPException(status_code=404, detail='Device not found')
     
     try:
         parsed_preferences = device.preferences
         return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
     except Exception as e:
-        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
+        return HTTPException(status_code=500, detail='Stored preferences are not valid JSON')
 
 
 class KEMInitiateRequest(BaseModel):
