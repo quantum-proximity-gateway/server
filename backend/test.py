@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from litestar import Litestar
 from litestar.testing import AsyncTestClient
-from app import app, encryption_helper, EncryptedMessageRequest
+from app import app, encryption_helper, EncryptedMessageRequest, DEFAULT_PREFS
 import pytest
 import pytest_asyncio
 import os
@@ -144,3 +144,20 @@ async def test_get_credentials(test_client: AsyncTestClient) -> None:
     response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
     assert response_data['username'] == 'john_doe'
     assert response_data['password'] == 'password'
+
+@pytest.mark.asyncio
+async def test_get_json_preferences(test_client: AsyncTestClient) -> None:
+    # Register a device
+    data = {
+        'mac_address': '00:11:22:33:44:55',
+        'username': 'john_doe',
+        'password': 'password'
+    }
+    encrypted_data = {'client_id': TEST_CLIENT_ID_1} | encryption_helper.encrypt_msg(data, TEST_CLIENT_ID_1)
+    _ = await test_client.post('/register', json=encrypted_data)
+
+    # Fetch preferences
+    username = 'john_doe'
+    response = await test_client.get(f'/preferences/{username}?client_id={TEST_CLIENT_ID_1}')
+    response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
+    assert response_data['preferences'] == DEFAULT_PREFS
