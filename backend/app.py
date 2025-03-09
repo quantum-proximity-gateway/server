@@ -6,9 +6,12 @@ import os
 import cv2
 import subprocess
 import shutil
+import time
+import hmac
+import hashlib
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
-from litestar import Litestar, get, post, Request
+from litestar import Litestar, get, post, Request, put
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
 from litestar.enums import RequestEncodingType
@@ -26,8 +29,6 @@ from github import Github, GithubException
 from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
-
-TEST = True
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -48,7 +49,8 @@ class Device(Base):
     mac_address: Mapped[str] = mapped_column(primary_key=True)
     username: Mapped[str]
     password: Mapped[str]
-    key: Mapped[str]
+    secret: Mapped[str] # Shared secret used in TOTP, maybe encrypt?
+    totp_timestamp: Mapped[int]
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
         MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
@@ -60,29 +62,15 @@ class RegisterDeviceRequest(BaseModel):
     mac_address: str
     username: str
     password: str
-
+    secret: str
+    timestamp: int
 
 class EncryptedMessageRequest(BaseModel):
     client_id: str
     nonce_b64: str
     ciphertext_b64: str
 
-
-# class ValidateKeyRequest(BaseModel):
-#     mac_address: str
-#     key: str
-
-
-# class RegenerateKeyRequest(BaseModel):
-#     mac_address: str
-
-
-# class UpdatePreferencesRequest(BaseModel):
-#     preferences: dict
-
-
-class UpdateJSONPreferencesRequest(BaseModel):
-    username: str
+class UpdatePreferencesRequest(BaseModel):
     preferences: dict
 
 
@@ -102,9 +90,50 @@ class FaceRegistrationRequest(BaseModel):
     class Config(ConfigDict):
         arbitrary_types_allowed = True
 
+class UpdateJSONPreferencesRequest(BaseModel):
+    username: str
+    preferences: dict
 
-def generate_key(length: int = 32) -> str:
-    return ''.join(secrets.choice([chr(i) for i in range(0x21, 0x7F)]) for _ in range(length))
+class CredentialsRequest(BaseModel):
+    mac_address: str
+    totp: int
+
+async def generate_totp(mac_address: str ,transaction: AsyncSession) -> int:
+    query = select(Device.secret, Device.totp_timestamp).where(Device.mac_address == mac_address)
+    result = await transaction.execute(query)
+    results = result.one_or_none()
+    if not results:
+        raise HTTPException(status_code=404, detail='Device not found')
+    secret, timestamp = results
+    return totp(secret, timestamp)
+
+
+def totp(secret: str, timestamp: int) -> int:
+    time_now = time.time()
+    time_elapsed = int(time_now - timestamp)
+    TOTP_DIGITS = 6
+    TIME_STEP = 30
+    time_counter = int(time_elapsed / TIME_STEP)
+    counter = [None] * 8
+
+    # convert to 8 byte array
+    for i in range(7, -1, -1):
+        counter[i] = time_counter & 0xFF
+        time_counter >>= 8
+
+    h = hmac.new(bytes(secret.encode()), bytes(counter), hashlib.sha1)
+    hmac_digest = h.digest()
+    offset = hmac_digest[19] & 0x0F
+    bin_code = ((hmac_digest[offset] & 0x7F) << 24 |
+                ((hmac_digest[offset + 1] & 0xFF) << 16) |
+                ((hmac_digest[offset + 2] & 0xFF) << 8) |
+                (hmac_digest[offset + 3] & 0xFF))
+    
+    mod_divisor = 1
+    for i in range(TOTP_DIGITS):
+        mod_divisor *= 10
+    totp_code = bin_code % mod_divisor
+    return totp_code
 
 async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     async with db_session.begin():
@@ -148,85 +177,56 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
     
-    # TODO: Need to think of a way to encrypt the password on the DB
-    key = generate_key()
+    # TODO: Need to think of a way to encrypt the password on the db
+
     device = Device(
         mac_address=validated_data.mac_address.strip(),
         username=validated_data.username,
         password=validated_data.password,
-        key=key,
+        secret=validated_data.secret,
+        totp_timestamp= int(validated_data.timestamp/1000) # JavaScript Date.now() uses ms
     )
+    try:
+        transaction.add(device)
+    except:
+        print('RAISE')
+        raise HTTPException(status_code=400, detail='Device already registered')
+    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
+
+
+@get('/devices/{mac_address:str}/preferences')
+async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+
+    query = select(Device).where(Device.mac_address == mac_address)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        raise HTTPException(status_code=404, detail='Device not found')
     
-    transaction.add(device)
-    # return encryption_helper.encrypt_msg({'key': device.key}, client_id)
-    return None
+    try:
+        parsed_preferences = json.loads(device.preferences)
+        return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
-# # Add encryption
-# @post('/devices/validate-key')
-# async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> None:
-#     query = select(Device).where(Device.mac_address == data.mac_address)
-#     result = await transaction.execute(query)
-#     device = result.scalar_one_or_none()
 
-#     if not device:
-#         raise HTTPException(status_code=404, detail='Device not found')
+@put('/devices/{mac_address:str}/preferences')
+async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+    if not data.client_id:
+        raise HTTPException(status_code=400, detail='client_id parameter is required')
+    decryped_data = encryption_helper.decrypt_msg(data)
+    validated_data = UpdatePreferencesRequest(**decryped_data)
+    query = select(Device).where(Device.mac_address == mac_address)
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail='Device not found')
 
-#     if device.key != data.key:
-#         raise HTTPException(status_code=401, detail='Invalid key')
-
-#     new_key = generate_key()
-#     device.key = new_key
-
-# # Might deprecate due to switch to TOTP
-# @post('/devices/regenerate-key')
-# async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) -> None:
-#     query = select(Device).where(Device.mac_address == data.mac_address)
-#     result = await transaction.execute(query)
-#     device = result.scalar_one_or_none()
-
-#     if not device:
-#         raise HTTPException(status_code=404, detail='Device not found')
-
-#     new_key = generate_key()
-#     device.key = new_key
-
-# @get('/devices/{mac_address:str}/preferences')
-# async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
-#     client_id = request.query_params.get('client_id')
-#     if not client_id:
-#         raise HTTPException(status_code=400, detail='client_id query parameter is required')
-
-#     query = select(Device).where(Device.mac_address == mac_address)
-#     result = await transaction.execute(query)
-#     device = result.scalar_one_or_none()
-
-#     if not device:
-#         raise HTTPException(status_code=404, detail='Device not found')
-    
-#     try:
-#         parsed_preferences = json.loads(device.preferences)
-#         return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
-#     except json.JSONDecodeError:
-#         raise HTTPException(status_code=500, detail='Stored preferences are not valid JSON')
-
-# @put('/devices/{mac_address:str}/preferences')
-# async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
-#     if not data.client_id:
-#         raise HTTPException(status_code=400, detail='client_id parameter is required')
-#     decrypted_data = encryption_helper.decrypt_msg(data)
-#     validated_data = UpdatePreferencesRequest(**decrypted_data)
-#     query = select(Device).where(Device.mac_address == mac_address)
-#     result = await transaction.execute(query)
-#     device = result.scalar_one_or_none()
-#     if not device:
-#         raise HTTPException(status_code=404, detail='Device not found')
-    
-#     try:
-#         device.preferences = json.dumps(validated_data.preferences)
-#     except TypeError as e:
-#         raise HTTPException(status_code=400, detail='Invalid JSON')
-
-#     return encryption_helper.encrypt_msg({'preferences': validated_data.preferences}, data.client_id)
+    return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
@@ -250,24 +250,28 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
         raise HTTPException(status_code=404, detail='Device not found')
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
-@get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
-async def get_credentials(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
-    mac_address = urllib.parse.unquote(mac_address)
-    
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+@put('/devices/credentials') 
+async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:    
+    decrypted_data = encryption_helper.decrypt_msg(data)
+    validated_data = CredentialsRequest(**decrypted_data)
+    check_totp = await generate_totp(validated_data.mac_address, transaction)
+    if validated_data.totp == check_totp:
+        query = select(Device.username, Device.password).where(Device.mac_address == validated_data.mac_address)
 
-    query = select(Device.username, Device.password).where(Device.mac_address == mac_address)
+        result = await transaction.execute(query)
+        credentials = result.one_or_none()
+        if not credentials:
+            raise HTTPException(status_code=404, detail="Device not found.")
 
-    result = await transaction.execute(query)
-    credentials = result.one_or_none()
-    if not credentials:
-        raise HTTPException(status_code=404, detail='Device not found')
-    
-    username, password = credentials
-    data = {'username': username, 'password': password}
-    return encryption_helper.encrypt_msg(data, client_id)
+        username, password = credentials
+        credential_data = {'username': username, 'password': password}
+        encrypted_data = encryption_helper.encrypt_msg(credential_data, data.client_id)
+        return encrypted_data
+    else:
+        print("Generated:", check_totp)
+        print("Received TOTP:", validated_data.totp)
+        raise HTTPException(status_code=500, detail='TOTP does not match')
+
 
 @post('/preferences/update')
 async def update_json_preferences(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
@@ -303,13 +307,21 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     device = result.scalar_one_or_none()
 
     if not device:
-        raise HTTPException(status_code=404, detail='Device not found')
-
+        raise HTTPException(status_code=404, detail='Username not found')
+    
     try:
         parsed_preferences = device.preferences
         return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail='Stored preferences are not valid JSON')
+       raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
+
+
+class KEMInitiateRequest(BaseModel):
+    client_id: str
+
+class KEMCompleteRequest(BaseModel):
+    client_id: str
+    ciphertext_b64: str
 
 @post('/kem/initiate')
 async def kem_initiate(data: KEMInitiateRequest) -> dict:
@@ -475,7 +487,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
-
+TEST = False
 if TEST:
     filename = 'test_db.sqlite'
 else:
@@ -497,12 +509,9 @@ cors_config = CORSConfig(
 
 app = Litestar(
     route_handlers=[
-        get_devices,
         register_device,
-        # validate_key,
-        # regenerate_key,
-        # get_preferences,
-        # update_preferences,
+        get_preferences,
+        update_preferences,
         get_all_mac_addresses,
         get_username,
         get_credentials,
