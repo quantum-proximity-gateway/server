@@ -126,3 +126,21 @@ async def test_get_username(test_client: AsyncTestClient) -> None:
     # Test that error is returned when the client id given is not registered
     response = await test_client.get(f'/devices/{mac_address}/username?client_id={TEST_CLIENT_ID_2}')
     assert response.status_code == 404
+
+@pytest.mark.asyncio
+async def test_get_credentials(test_client: AsyncTestClient) -> None:
+    # Register a device first
+    data = {
+        'mac_address': '00:11:22:33:44:55',
+        'username': 'john_doe',
+        'password': 'password'
+    }
+    encrypted_data = {'client_id': TEST_CLIENT_ID_1} | encryption_helper.encrypt_msg(data, TEST_CLIENT_ID_1)
+    _ = await test_client.post('/register', json=encrypted_data)
+
+    # Fetch credentials
+    mac_address = '00:11:22:33:44:55'
+    response = await test_client.get(f'/devices/{mac_address}/credentials?client_id={TEST_CLIENT_ID_1}')
+    response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
+    assert response_data['username'] == 'john_doe'
+    assert response_data['password'] == 'password'
