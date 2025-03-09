@@ -119,7 +119,7 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @get('/devices')
-async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
+async def get_devices(request: Request, transaction: AsyncSession) -> dict:
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -127,8 +127,12 @@ async def get_devices(request: Request, transaction: AsyncSession) -> list[Devic
     query = select(Device)
     result = await transaction.execute(query)
     devices = result.scalars().all()
+
+    serialized_devices = [device.__dict__ for device in devices]
+    for device in serialized_devices:
+        device.pop('_sa_instance_state', None)
     
-    return encryption_helper.encrypt_msg({"devices": devices}, client_id)
+    return encryption_helper.encrypt_msg({'devices': serialized_devices}, client_id)
 
 @post('/register')
 async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
@@ -157,40 +161,37 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     try:
         transaction.add(device)
     except:
-        print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
-    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success', 'key': key}, client_id)
+    return encryption_helper.encrypt_msg({'key': key}, client_id)
 
-# Add encryption
-@post('/devices/validate-key')
-async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == data.mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
+# # Add encryption
+# @post('/devices/validate-key')
+# async def validate_key(data: ValidateKeyRequest, transaction: AsyncSession) -> None:
+#     query = select(Device).where(Device.mac_address == data.mac_address)
+#     result = await transaction.execute(query)
+#     device = result.scalar_one_or_none()
 
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
-    
-    if device.key != data.key:
-        return {'status_code': 401, 'detail': 'Invalid key'}
-    
-    new_key = generate_key()
-    device.key = new_key
-    return {'status': 'success'}
+#     if not device:
+#         raise HTTPException(status_code=404, detail='Device not found')
 
-# Might deprecate due to switch to TOTP
-@post('/devices/regenerate-key')
-async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) -> dict:
-    query = select(Device).where(Device.mac_address == data.mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
+#     if device.key != data.key:
+#         raise HTTPException(status_code=401, detail='Invalid key')
 
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+#     new_key = generate_key()
+#     device.key = new_key
 
-    new_key = generate_key()
-    device.key = new_key
-    return {'status': 'success'}
+# # Might deprecate due to switch to TOTP
+# @post('/devices/regenerate-key')
+# async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) -> None:
+#     query = select(Device).where(Device.mac_address == data.mac_address)
+#     result = await transaction.execute(query)
+#     device = result.scalar_one_or_none()
+
+#     if not device:
+#         raise HTTPException(status_code=404, detail='Device not found')
+
+#     new_key = generate_key()
+#     device.key = new_key
 
 # @get('/devices/{mac_address:str}/preferences')
 # async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
@@ -203,13 +204,13 @@ async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) 
 #     device = result.scalar_one_or_none()
 
 #     if not device:
-#         return {'status_code': 404, 'detail': 'Device not found'}
+#         raise HTTPException(status_code=404, detail='Device not found')
     
 #     try:
 #         parsed_preferences = json.loads(device.preferences)
 #         return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
 #     except json.JSONDecodeError:
-#         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
+#         raise HTTPException(status_code=500, detail='Stored preferences are not valid JSON')
 
 # @put('/devices/{mac_address:str}/preferences')
 # async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
@@ -221,7 +222,7 @@ async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) 
 #     result = await transaction.execute(query)
 #     device = result.scalar_one_or_none()
 #     if not device:
-#         return {'status_code': 404, 'detail': 'Device not found'}
+#         raise HTTPException(status_code=404, detail='Device not found')
     
 #     try:
 #         device.preferences = json.dumps(validated_data.preferences)
@@ -239,20 +240,17 @@ async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> 
     query = select(Device.mac_address)
     result = await transaction.execute(query)
     mac_addresses = result.scalars().all()
-
-    encrypted_msg = encryption_helper.encrypt_msg({"mac_addresses": mac_addresses}, client_id)
-    return encrypted_msg
+    return encryption_helper.encrypt_msg({"mac_addresses": mac_addresses}, client_id)
 
 @get('/devices/{mac_address:str}/username')
 async def get_username(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
-
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
     
     username = await fetch_username(mac_address, transaction)
     if not username:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=404, detail='Device not found')
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
 @get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
@@ -268,12 +266,11 @@ async def get_credentials(request: Request, mac_address: str, transaction: Async
     result = await transaction.execute(query)
     credentials = result.one_or_none()
     if not credentials:
-        return {'status_code': 404, 'detail': 'Device not found'}
-
+        raise HTTPException(status_code=404, detail='Device not found')
+    
     username, password = credentials
     data = {'username': username, 'password': password}
-    encrypted_data = encryption_helper.encrypt_msg(data, client_id)
-    return encrypted_data
+    return encryption_helper.encrypt_msg(data, client_id)
 
 @post('/preferences/update')
 async def update_json_preferences(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
@@ -289,14 +286,14 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
     device = result.scalar_one_or_none()
 
     if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=404, detail='Device not found')
 
     try:
         device.preferences = validated_data.preferences
         await transaction.commit()
         return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, client_id)
     except Exception as e:
-        return {'status_code': 500, 'detail': 'Failed to update preferences'}
+        raise HTTPException(status_code=500, detail='Failed to update preferences')
 
 @get('/preferences/{username:str}')
 async def get_json_preferences(request: Request, username: str, transaction: AsyncSession) -> dict:
@@ -309,13 +306,13 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     device = result.scalar_one_or_none()
 
     if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
-    
+        raise HTTPException(status_code=404, detail='Device not found')
+
     try:
         parsed_preferences = device.preferences
         return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
     except Exception as e:
-        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
+        raise HTTPException(status_code=500, detail='Stored preferences are not valid JSON')
 
 @post('/kem/initiate')
 async def kem_initiate(data: KEMInitiateRequest) -> dict:
@@ -505,8 +502,8 @@ app = Litestar(
     route_handlers=[
         get_devices,
         register_device,
-        validate_key,
-        regenerate_key,
+        # validate_key,
+        # regenerate_key,
         # get_preferences,
         # update_preferences,
         get_all_mac_addresses,
