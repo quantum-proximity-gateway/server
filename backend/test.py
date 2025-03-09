@@ -5,6 +5,8 @@ from app import app, encryption_helper, EncryptedMessageRequest, DEFAULT_PREFS
 import pytest
 import pytest_asyncio
 import os
+import oqs
+import base64
 
 
 TEST_DB_FILENAME = 'test_db.sqlite'
@@ -187,3 +189,35 @@ async def test_update_json_preferences(test_client: AsyncTestClient) -> None:
     response = await test_client.get(f'/preferences/{username}?client_id={TEST_CLIENT_ID_1}')
     response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
     assert response_data['preferences'] == {'new': True}
+
+@pytest.mark.asyncio
+async def test_kem_initiate_and_complete(test_client: AsyncTestClient) -> None:
+    # Get public key
+    data = {'client_id': TEST_CLIENT_ID_1}
+    response = await test_client.post('/kem/initiate', json=data)
+    public_key_b64 = response.json().get('public_key_b64')
+    if not public_key_b64:
+        assert False
+    
+    assert encryption_helper.kem_sessions.get(TEST_CLIENT_ID_1) != None
+
+    # Encapsulate a shared secret
+    with oqs.KeyEncapsulation('ML-KEM-512') as client_kem:
+        try:
+            public_key = base64.b64decode(public_key_b64)
+            ciphertext, shared_secret = client_kem.encap_secret(public_key)
+        except Exception as e:
+            assert False
+
+    # Send encapsulated shared secret
+    ciphertext_b64 = base64.b64encode(ciphertext).decode()
+    data = {'client_id': TEST_CLIENT_ID_1, 'ciphertext_b64': ciphertext_b64}
+    response = await test_client.post(f'/kem/complete', json=data)
+    if response.status_code != 201:
+        assert False
+
+    assert shared_secret == encryption_helper.shared_secrets.get(TEST_CLIENT_ID_1)
+
+@pytest.mark.asyncio
+async def test_register_face(test_client: AsyncTestClient) -> None:
+    pass
