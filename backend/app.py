@@ -129,21 +129,6 @@ async def provide_transaction(db_session: AsyncSession) -> AsyncGenerator[AsyncS
     async with db_session.begin():
         yield db_session
 
-# When is this endpoint used? - might need to delete
-@get('/devices')
-async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
-
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
-    
-    query = select(Device)
-    result = await transaction.execute(query)
-    devices = result.scalars().all()
-    
-    encrypted_msg = encryption_helper.encrypt_msg({"devices":devices},client_id)
-    return encrypted_msg
-
 @post('/register')
 async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     if not data.client_id:
@@ -497,7 +482,6 @@ cors_config = CORSConfig(
 
 app = Litestar(
     route_handlers=[
-        get_devices,
         register_device,
         get_preferences,
         update_preferences,
