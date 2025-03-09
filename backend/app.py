@@ -158,6 +158,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         raise HTTPException(status_code=400, detail='Device already registered')
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
+# is this endpoint ever used?
 @get('/devices/{mac_address:str}/preferences')
 async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
     client_id = request.query_params.get('client_id')
@@ -169,13 +170,13 @@ async def get_preferences(request: Request, mac_address: str, transaction: Async
     device = result.scalar_one_or_none()
 
     if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=404, detail='Device not found')
     
     try:
         parsed_preferences = json.loads(device.preferences)
         return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
     except json.JSONDecodeError:
-        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
+        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
 
 @put('/devices/{mac_address:str}/preferences')
@@ -188,7 +189,7 @@ async def update_preferences(mac_address: str, data: EncryptedMessageRequest, tr
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
     if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=404, detail='Device not found')
 
     return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
 
@@ -224,7 +225,7 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
     
     username = await fetch_username(mac_address, transaction)
     if not username:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=404, detail='Device not found')
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
 @put('/devices/credentials') 
@@ -264,14 +265,14 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
     device = result.scalar_one_or_none()
 
     if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=404, detail='Device not found')
 
     try:
         device.preferences = validated_data.preferences
         await transaction.commit()
         return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, client_id)
     except Exception as e:
-        return {'status_code': 500, 'detail': 'Failed to update preferences'}
+        raise HTTPException(status_code=500, detail='Failed to update preferences')
 
 @get('/preferences/{username:str}')
 async def get_json_preferences(request: Request, username: str, transaction: AsyncSession) -> dict:
@@ -284,13 +285,13 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     device = result.scalar_one_or_none()
 
     if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+        raise HTTPException(status_code=400, detail='Username not found')
     
     try:
         parsed_preferences = device.preferences
         return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
     except Exception as e:
-        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
+       raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
 
 class KEMInitiateRequest(BaseModel):
