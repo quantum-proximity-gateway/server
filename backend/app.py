@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
 
+TEST = True
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -135,8 +136,8 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     if not data.client_id:
         raise HTTPException(status_code=400, detail='client_id parameter is required')
     client_id = data.client_id
-    decryped_data = encryption_helper.decrypt_msg(data)
-    validated_data = RegisterDeviceRequest(**decryped_data)
+    decrypted_data = encryption_helper.decrypt_msg(data)
+    validated_data = RegisterDeviceRequest(**decrypted_data)
 
     query = select(Device).where(Device.mac_address == validated_data.mac_address.strip())
     result = await transaction.execute(query)
@@ -477,8 +478,12 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
+filename_prepend = ''
+if TEST:
+    filename_prepend = 'test_'
+
 db_config = SQLAlchemyAsyncConfig(
-    connection_string='sqlite+aiosqlite:///db.sqlite',
+    connection_string=f'sqlite+aiosqlite:///{filename_prepend}db.sqlite',
     metadata=Base.metadata,
     create_all=True,
     before_send_handler=autocommit_before_send_handler
