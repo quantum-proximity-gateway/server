@@ -30,8 +30,6 @@ from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
 
-TEST = True
-
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
@@ -489,7 +487,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
-
+TEST = False
 if TEST:
     filename = 'test_db.sqlite'
 else:
