@@ -6,25 +6,27 @@ import json
 from litestar.exceptions import HTTPException
 import numpy as np
 
+
+class KEMInitiateRequest(BaseModel):
+    client_id: str
+
+
+class KEMCompleteRequest(BaseModel):
+    client_id: str
+    ciphertext_b64: str
+
+
+class EncryptedMessageRequest(BaseModel):
+    client_id: str
+    nonce_b64: str
+    ciphertext_b64: str
+
+
 class EncryptionHelper():
     def __init__(self):
         self.KEM_ALGORITHM = 'ML-KEM-512'
         self.kem_sessions = {}
         self.shared_secrets = {}
-    
-    class KEMInitiateRequest(BaseModel):
-        client_id: str
-
-
-    class KEMCompleteRequest(BaseModel):
-        client_id: str
-        ciphertext_b64: str
-
-
-    class EncryptedMessageRequest(BaseModel):
-        client_id: str
-        nonce_b64: str
-        ciphertext_b64: str
 
     def decrypt_msg(self, data: EncryptedMessageRequest):
         try:
