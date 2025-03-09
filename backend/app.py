@@ -119,7 +119,6 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
 # When is this endpoint used? - might need to delete
 @get('/devices')
 async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
-
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -227,7 +226,6 @@ async def update_preferences(mac_address: str, data: EncryptedMessageRequest, tr
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
-
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
