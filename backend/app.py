@@ -8,7 +8,7 @@ import subprocess
 import shutil
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
-from litestar import Litestar, get, post, put, Request
+from litestar import Litestar, get, post, Request
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
 from litestar.enums import RequestEncodingType
@@ -49,6 +49,7 @@ class Device(Base):
     username: Mapped[str]
     password: Mapped[str]
     key: Mapped[str]
+    # preferences: Mapped[str] = '{}'
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
         MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
@@ -117,7 +118,6 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     username = result.scalar_one_or_none()
     return username
 
-# When is this endpoint used? - might need to delete
 @get('/devices')
 async def get_devices(request: Request, transaction: AsyncSession) -> list[Device]:
     client_id = request.query_params.get('client_id')
@@ -128,8 +128,7 @@ async def get_devices(request: Request, transaction: AsyncSession) -> list[Devic
     result = await transaction.execute(query)
     devices = result.scalars().all()
     
-    encrypted_msg = encryption_helper.encrypt_msg({"devices":devices}, client_id)
-    return encrypted_msg
+    return encryption_helper.encrypt_msg({"devices": devices}, client_id)
 
 @post('/register')
 async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
@@ -146,7 +145,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
     
-    # TODO: Need to think of a way to encrypt the password on the db
+    # TODO: Need to think of a way to encrypt the password on the DB
     key = generate_key()
     device = Device(
         mac_address=validated_data.mac_address.strip(),
@@ -154,6 +153,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         password=validated_data.password,
         key=key,
     )
+    
     try:
         transaction.add(device)
     except:
@@ -192,38 +192,43 @@ async def regenerate_key(data: RegenerateKeyRequest, transaction: AsyncSession) 
     device.key = new_key
     return {'status': 'success'}
 
-@get('/devices/{mac_address:str}/preferences')
-async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+# @get('/devices/{mac_address:str}/preferences')
+# async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
+#     client_id = request.query_params.get('client_id')
+#     if not client_id:
+#         raise HTTPException(status_code=400, detail='client_id query parameter is required')
 
-    query = select(Device).where(Device.mac_address == mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
+#     query = select(Device).where(Device.mac_address == mac_address)
+#     result = await transaction.execute(query)
+#     device = result.scalar_one_or_none()
 
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+#     if not device:
+#         return {'status_code': 404, 'detail': 'Device not found'}
     
-    try:
-        parsed_preferences = json.loads(device.preferences)
-        return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
-    except json.JSONDecodeError:
-        return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
+#     try:
+#         parsed_preferences = json.loads(device.preferences)
+#         return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
+#     except json.JSONDecodeError:
+#         return {'status_code': 500, 'detail': 'Stored preferences are not valid JSON'}
 
-@put('/devices/{mac_address:str}/preferences')
-async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
-    if not data.client_id:
-        raise HTTPException(status_code=400, detail='client_id parameter is required')
-    decryped_data = encryption_helper.decrypt_msg(data)
-    validated_data = UpdatePreferencesRequest(**decryped_data)
-    query = select(Device).where(Device.mac_address == mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-    if not device:
-        return {'status_code': 404, 'detail': 'Device not found'}
+# @put('/devices/{mac_address:str}/preferences')
+# async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+#     if not data.client_id:
+#         raise HTTPException(status_code=400, detail='client_id parameter is required')
+#     decrypted_data = encryption_helper.decrypt_msg(data)
+#     validated_data = UpdatePreferencesRequest(**decrypted_data)
+#     query = select(Device).where(Device.mac_address == mac_address)
+#     result = await transaction.execute(query)
+#     device = result.scalar_one_or_none()
+#     if not device:
+#         return {'status_code': 404, 'detail': 'Device not found'}
+    
+#     try:
+#         device.preferences = json.dumps(validated_data.preferences)
+#     except TypeError as e:
+#         raise HTTPException(status_code=400, detail='Invalid JSON')
 
-    return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
+#     return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
@@ -235,7 +240,6 @@ async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> 
     result = await transaction.execute(query)
     mac_addresses = result.scalars().all()
 
-    # Encrypting the mac addresses using client_id
     encrypted_msg = encryption_helper.encrypt_msg({"mac_addresses": mac_addresses}, client_id)
     return encrypted_msg
 
@@ -252,7 +256,7 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
 @get('/devices/{mac_address:str}/credentials') # TO BE CHANGED LATER TO USE validate_key() DEV PURPOSES ONLY
-async def get_credentials(request:Request, mac_address: str, transaction: AsyncSession) -> dict:
+async def get_credentials(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
     mac_address = urllib.parse.unquote(mac_address)
     
     client_id = request.query_params.get('client_id')
@@ -321,28 +325,27 @@ async def kem_initiate(data: KEMInitiateRequest) -> dict:
 async def kem_complete(data: KEMCompleteRequest) -> dict:
     return encryption_helper.kem_complete(data)
 
-@post('/registration/faceRec')
+def convert_to_mp4(webm_path: str, mp4_path: str) -> None:
+    """Convert a WebM file to MP4 using ffmpeg."""
+    # Common options: -c:v libx264 for video, -c:a aac for audio.
+    # Adjust as needed for your environment/codecs.
+    command = [
+        'ffmpeg',
+        '-i', webm_path,
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        '-strict', 'experimental',  # Sometimes needed for aac
+        '-y',  # Overwrite without asking
+        mp4_path
+    ]
+    try:
+        subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg conversion failed: {e.stderr.decode('utf-8', errors='replace')}")
+        raise HTTPException(status_code=500, detail="Failed to convert WebM to MP4")
+
+@post('/register/face')
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
-
-    def convert_to_mp4(webm_path: str, mp4_path: str) -> None:
-        """Convert a WebM file to MP4 using ffmpeg."""
-        # Common options: -c:v libx264 for video, -c:a aac for audio.
-        # Adjust as needed for your environment/codecs.
-        command = [
-            'ffmpeg',
-            '-i', webm_path,
-            '-c:v', 'libx264',
-            '-c:a', 'aac',
-            '-strict', 'experimental',  # Sometimes needed for aac
-            '-y',  # Overwrite without asking
-            mp4_path
-        ]
-        try:
-            subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError as e:
-            logging.error(f"FFmpeg conversion failed: {e.stderr.decode('utf-8', errors='replace')}")
-            raise HTTPException(status_code=500, detail="Failed to convert WebM to MP4")
-
     mac_address = data.mac_address
     logging.info(f"Received mac_address: {mac_address}")
     #TODO: Add check to see if face already registered
@@ -478,12 +481,14 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     #TODO: 2.0
     # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
-filename_prepend = ''
+
 if TEST:
-    filename_prepend = 'test_'
+    filename = 'test_db.sqlite'
+else:
+    filename = 'db.sqlite'
 
 db_config = SQLAlchemyAsyncConfig(
-    connection_string=f'sqlite+aiosqlite:///{filename_prepend}db.sqlite',
+    connection_string=f'sqlite+aiosqlite:///{filename}',
     metadata=Base.metadata,
     create_all=True,
     before_send_handler=autocommit_before_send_handler
@@ -502,8 +507,8 @@ app = Litestar(
         register_device,
         validate_key,
         regenerate_key,
-        get_preferences,
-        update_preferences,
+        # get_preferences,
+        # update_preferences,
         get_all_mac_addresses,
         get_username,
         get_credentials,
