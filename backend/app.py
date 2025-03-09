@@ -64,7 +64,7 @@ class RegisterDeviceRequest(BaseModel):
 
 
 class EncryptedMessageRequest(BaseModel):
-    client_id: str
+    client_id: str  # Is creating client_id uuid necessary? Could just pass mac address of device instead
     nonce_b64: str
     ciphertext_b64: str
 
