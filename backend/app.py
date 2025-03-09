@@ -86,7 +86,7 @@ class UpdateJSONPreferencesRequest(BaseModel):
 
 class CredentialsRequest(BaseModel):
     mac_address: str
-    totp: str
+    totp: int
 
 async def generate_totp(mac_address: str ,transaction: AsyncSession) -> int:
     query = select(Device.secret, Device.totp_timestamp).where(Device.mac_address == mac_address)
@@ -158,14 +158,13 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
 
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
-    
     # TODO: Need to think of a way to encrypt the password on the db
     device = Device(
         mac_address=validated_data.mac_address.strip(),
         username=validated_data.username,
         password=validated_data.password,
         secret=validated_data.secret,
-        totp_timestamp=validated_data.timestamp
+        totp_timestamp= int(validated_data.timestamp/1000) # JavaScript Date.now() uses ms
     )
     try:
         transaction.add(device)
@@ -244,10 +243,11 @@ async def get_username(request: Request, mac_address: str, transaction: AsyncSes
     return encryption_helper.encrypt_msg({'username': username}, client_id)
 
 @put('/devices/credentials') 
-async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:    
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = CredentialsRequest(**decrypted_data)
-    if validated_data.totp == generate_totp(validated_data.mac_address, transaction):
+    check_totp = await generate_totp(validated_data.mac_address, transaction)
+    if validated_data.totp == check_totp:
         query = select(Device.username, Device.password).where(Device.mac_address == validated_data.mac_address)
 
         result = await transaction.execute(query)
@@ -256,10 +256,12 @@ async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSessi
             raise HTTPException(status_code=404, detail="Device not found.")
 
         username, password = credentials
-        data = {'username': username, 'password': password}
-        encrypted_data = encryption_helper.encrypt_msg(data, data.client_id)
+        credential_data = {'username': username, 'password': password}
+        encrypted_data = encryption_helper.encrypt_msg(credential_data, data.client_id)
         return encrypted_data
     else:
+        print("Generated:", check_totp)
+        print("Received TOTP:", validated_data.totp)
         raise HTTPException(status_code=500, detail='TOTP does not match')
 
 
