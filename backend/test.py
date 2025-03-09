@@ -161,3 +161,29 @@ async def test_get_json_preferences(test_client: AsyncTestClient) -> None:
     response = await test_client.get(f'/preferences/{username}?client_id={TEST_CLIENT_ID_1}')
     response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
     assert response_data['preferences'] == DEFAULT_PREFS
+
+@pytest.mark.asyncio
+async def test_update_json_preferences(test_client: AsyncTestClient) -> None:
+    # Register a device
+    data = {
+        'mac_address': '00:11:22:33:44:55',
+        'username': 'john_doe',
+        'password': 'password'
+    }
+    encrypted_data = {'client_id': TEST_CLIENT_ID_1} | encryption_helper.encrypt_msg(data, TEST_CLIENT_ID_1)
+    _ = await test_client.post('/register', json=encrypted_data)
+
+    # Update preferences
+    data = {
+        'username': 'john_doe',
+        'preferences': {'new': True}
+    }
+    encrypted_update_data = {'client_id': TEST_CLIENT_ID_1} | encryption_helper.encrypt_msg(data, TEST_CLIENT_ID_1)
+    response = await test_client.post('/preferences/update', json=encrypted_update_data)
+    assert response.status_code == 201
+
+    # Fetch preferences to verify update
+    username = 'john_doe'
+    response = await test_client.get(f'/preferences/{username}?client_id={TEST_CLIENT_ID_1}')
+    response_data = encryption_helper.decrypt_msg(EncryptedMessageRequest(**({'client_id': TEST_CLIENT_ID_1} | response.json())))
+    assert response_data['preferences'] == {'new': True}
