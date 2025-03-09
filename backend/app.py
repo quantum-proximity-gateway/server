@@ -127,7 +127,7 @@ async def get_devices(request: Request, transaction: AsyncSession) -> list[Devic
     result = await transaction.execute(query)
     devices = result.scalars().all()
     
-    encrypted_msg = encryption_helper.encrypt_msg({"devices":devices},client_id)
+    encrypted_msg = encryption_helper.encrypt_msg({"devices":devices}, client_id)
     return encrypted_msg
 
 @post('/register')
