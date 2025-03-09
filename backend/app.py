@@ -11,7 +11,7 @@ import hmac
 import hashlib
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
-from litestar import Litestar, get, post, Request
+from litestar import Litestar, get, post, Request, put
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
 from litestar.enums import RequestEncodingType
@@ -193,7 +193,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     except:
         print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
-    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success', 'key': key}, client_id)
+    return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
 
 @get('/devices/{mac_address:str}/preferences')
