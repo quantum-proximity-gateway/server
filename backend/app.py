@@ -135,7 +135,7 @@ async def get_devices(request: Request, transaction: AsyncSession) -> dict:
     return encryption_helper.encrypt_msg({'devices': serialized_devices}, client_id)
 
 @post('/register')
-async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> None:
     if not data.client_id:
         raise HTTPException(status_code=400, detail='client_id parameter is required')
     client_id = data.client_id
@@ -159,7 +159,8 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     )
     
     transaction.add(device)
-    return encryption_helper.encrypt_msg({'key': device.key}, client_id)
+    # return encryption_helper.encrypt_msg({'key': device.key}, client_id)
+    return None
 
 # # Add encryption
 # @post('/devices/validate-key')
