@@ -28,7 +28,7 @@ class EncryptionHelper():
         self.kem_sessions = {}
         self.shared_secrets = {}
 
-    def decrypt_msg(self, data: EncryptedMessageRequest):
+    def decrypt_msg(self, data: EncryptedMessageRequest) -> dict:
         try:
             shared_secret = self.shared_secrets.get(data.client_id)
             if not shared_secret:
@@ -38,7 +38,7 @@ class EncryptionHelper():
         except Exception as e:
             raise RuntimeError(f"Failed to decrypt message: {e}")
 
-    def encrypt_msg(self, data: dict, client_id):
+    def encrypt_msg(self, data: dict, client_id: str) -> dict:
         shared_secret = self.shared_secrets.get(client_id)
         if not shared_secret:
             raise ValueError("Shared secret not found for client_id")
