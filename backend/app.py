@@ -69,17 +69,17 @@ class EncryptedMessageRequest(BaseModel):
     ciphertext_b64: str
 
 
-class ValidateKeyRequest(BaseModel):
-    mac_address: str
-    key: str
+# class ValidateKeyRequest(BaseModel):
+#     mac_address: str
+#     key: str
 
 
-class RegenerateKeyRequest(BaseModel):
-    mac_address: str
+# class RegenerateKeyRequest(BaseModel):
+#     mac_address: str
 
 
-class UpdatePreferencesRequest(BaseModel):
-    preferences: dict
+# class UpdatePreferencesRequest(BaseModel):
+#     preferences: dict
 
 
 class UpdateJSONPreferencesRequest(BaseModel):
