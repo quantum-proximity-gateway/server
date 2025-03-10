@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
 from video_encoding import convert_to_mp4, split_frames
+from train_model import train_model
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -352,17 +353,17 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     # need to convert to mp4 cuz webm isn't fully saved/processed by the time we need to extract frames
     mp4_path = os.path.join(user_video_dir, "video.mp4")
     convert_to_mp4(video_path, mp4_path)
-    split_frames(mp4_path, user_video_dir)
-    
+    extracted_frames = split_frames(mp4_path, user_video_dir)
+
+    # retrain model on new frames
+    train_model(extracted_frames, username)
+
     # delete folder
     if os.path.exists(user_video_dir):
         shutil.rmtree(user_video_dir, ignore_errors=True)
         logging.info(f"Deleted folder: {user_video_dir}")
 
     return {'status': 'success', 'video_path': video_path}
-
-    #TODO: 2.0
-    # Somehow automate retraining - continous git pulls? - To be implemented on rpi-code
 
 TEST = False
 if TEST:
