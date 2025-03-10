@@ -7,6 +7,7 @@ import time
 import hmac
 import pickle
 import hashlib
+import numpy as np
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, Request, put
@@ -323,12 +324,24 @@ async def get_encodings(request: Request) -> dict:
     
     pickle_file_path = "encodings.pickle"
     if not os.path.exists(pickle_file_path):
-        raise HTTPException(status_code=404, detail='encodings.pickle file not found')
+        return encryption_helper.encrypt_msg({}, client_id)
 
-    with open(pickle_file_path, "rb") as f:
+    with open(pickle_file_path, 'rb') as f:
         data = pickle.load(f)
 
-    return encryption_helper.encrypt_msg(data, client_id)
+    def convert_to_serializable(obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {k: convert_to_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_serializable(i) for i in obj]
+        else:
+            return obj
+
+    serializable_data = convert_to_serializable(data)
+
+    return encryption_helper.encrypt_msg(serializable_data, client_id)
 
 class KEMInitiateRequest(BaseModel):
     client_id: str
@@ -413,6 +426,7 @@ app = Litestar(
         update_json_preferences,
         kem_complete,
         kem_initiate,
+        get_encodings
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
