@@ -6,11 +6,15 @@ import cv2
 
 def train_model(frame_paths, username):
     print("[INFO] start processing faces...")
-    with open("encodings.pickle", "rb") as f:
-        data = pickle.loads(f.read())
-    
-    knownEncodings = data['encodings']
-    knownNames = data['names']
+
+    if os.path.exists("encodings.pickle") and os.path.getsize("encodings.pickle") > 0:
+        with open("encodings.pickle", "rb") as f:
+            data = pickle.loads(f.read())
+        knownEncodings = data['encodings']
+        knownNames = data['names']
+    else:
+        knownEncodings = []
+        knownNames = []
 
     for (i, imagePath) in enumerate(frame_paths):
         print(f"[INFO] processing image {i + 1}/{len(frame_paths)}")
@@ -30,6 +34,7 @@ def train_model(frame_paths, username):
 
     print("[INFO] serializing encodings...")
     data = {"encodings": knownEncodings, "names": knownNames}
+    print(data)
     with open("encodings.pickle", "wb") as f:
         f.write(pickle.dumps(data))
 

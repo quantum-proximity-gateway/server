@@ -370,7 +370,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     convert_to_mp4(video_path, mp4_path)
     extracted_frames = split_frames(mp4_path, user_video_dir)
     print(extracted_frames)
-    # retrain model on new frames
+    # retrain model on new frames, might need to async it
     train_model(extracted_frames, username)
 
     # delete folder
@@ -378,7 +378,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
         shutil.rmtree(user_video_dir, ignore_errors=True)
         logging.info(f"Deleted folder: {user_video_dir}")
 
-    return {'status': 'success', 'video_path': video_path}
+    return {'status': 'success'}
 
 TEST = False
 if TEST:
