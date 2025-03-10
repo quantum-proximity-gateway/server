@@ -34,7 +34,6 @@ def train_model(frame_paths, username):
 
     print("[INFO] serializing encodings...")
     data = {"encodings": knownEncodings, "names": knownNames}
-    print(data)
     with open("encodings.pickle", "wb") as f:
         f.write(pickle.dumps(data))
 

@@ -190,7 +190,6 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     try:
         transaction.add(device)
     except:
-        print('RAISE')
         raise HTTPException(status_code=400, detail='Device already registered')
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
@@ -382,7 +381,6 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     mp4_path = os.path.join(user_video_dir, "video.mp4")
     convert_to_mp4(video_path, mp4_path)
     extracted_frames = split_frames(mp4_path, user_video_dir)
-    print(extracted_frames)
     # retrain model on new frames, might need to async it
     train_model(extracted_frames, username)
 
