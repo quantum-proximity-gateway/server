@@ -5,6 +5,7 @@ import os
 import shutil
 import time
 import hmac
+import pickle
 import hashlib
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
@@ -314,6 +315,20 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     except Exception as e:
        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
+@get('/encodings')
+async def get_encodings(request: Request) -> dict:
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        raise HTTPException(status_code=400, detail='client_id query parameter is required')
+    
+    pickle_file_path = "encodings.pickle"
+    if not os.path.exists(pickle_file_path):
+        raise HTTPException(status_code=404, detail='encodings.pickle file not found')
+
+    with open(pickle_file_path, "rb") as f:
+        data = pickle.load(f)
+
+    return encryption_helper.encrypt_msg(data, client_id)
 
 class KEMInitiateRequest(BaseModel):
     client_id: str
@@ -354,7 +369,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
     mp4_path = os.path.join(user_video_dir, "video.mp4")
     convert_to_mp4(video_path, mp4_path)
     extracted_frames = split_frames(mp4_path, user_video_dir)
-
+    print(extracted_frames)
     # retrain model on new frames
     train_model(extracted_frames, username)
 
