@@ -70,3 +70,4 @@ def split_frames(mp4_path: str, user_video_dir: str):
         logging.info(f"Saved frame {i} to {frame_path}")
 
     cap.release()
+    return extracted_frames
