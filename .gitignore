@@ -165,5 +165,6 @@ cython_debug/
 
 /backend/videos
 /backend/db.sqlite
+/backend/test_db.sqlite
 
 llama-cpp-example/models
