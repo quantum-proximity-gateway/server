@@ -157,22 +157,6 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     username = result.scalar_one_or_none()
     return username
 
-@get('/devices')
-async def get_devices(request: Request, transaction: AsyncSession) -> dict:
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
-    
-    query = select(Device)
-    result = await transaction.execute(query)
-    devices = result.scalars().all()
-
-    serialized_devices = [device.__dict__ for device in devices]
-    for device in serialized_devices:
-        device.pop('_sa_instance_state', None)
-    
-    return encryption_helper.encrypt_msg({'devices': serialized_devices}, client_id)
-
 @post('/register')
 async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> None:
     if not data.client_id:
