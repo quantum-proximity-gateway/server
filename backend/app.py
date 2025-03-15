@@ -263,16 +263,15 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
     
-    query = select(Device).where(Device.username == username)
+    query = select(Device.preferences).where(Device.username == username)
     result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
+    preferences = result.scalar_one_or_none()
 
-    if not device:
+    if not preferences:
         raise HTTPException(status_code=404, detail='Username not found')
     
     try:
-        parsed_preferences = device.preferences
-        return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
+        return encryption_helper.encrypt_msg({'preferences': preferences},client_id)
     except Exception as e:
        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
