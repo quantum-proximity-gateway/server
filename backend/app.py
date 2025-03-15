@@ -33,6 +33,13 @@ from train_model import train_model
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
+aes_key = os.environ.get('AES_KEY')
+
+if aes_key is None: # Set AES_KEY for database if not set
+    aes_key = os.urandom(32)
+    with open('.env', 'a') as f:
+        f.write(f'\nAES_KEY={aes_key.hex()}')
+
 json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
 with open(json_path, 'r') as f:
     DEFAULT_PREFS = json.load(f)
