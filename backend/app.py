@@ -187,41 +187,6 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         raise HTTPException(status_code=400, detail='Device already registered')
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
-
-@get('/devices/{mac_address:str}/preferences')
-async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
-
-    query = select(Device).where(Device.mac_address == mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-
-    if not device:
-        raise HTTPException(status_code=404, detail='Device not found')
-    
-    try:
-        parsed_preferences = json.loads(device.preferences)
-        return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
-
-
-@put('/devices/{mac_address:str}/preferences')
-async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
-    if not data.client_id:
-        raise HTTPException(status_code=400, detail='client_id parameter is required')
-    decryped_data = encryption_helper.decrypt_msg(data)
-    validated_data = UpdatePreferencesRequest(**decryped_data)
-    query = select(Device).where(Device.mac_address == mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-    if not device:
-        raise HTTPException(status_code=404, detail='Device not found')
-
-    return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
-
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
     client_id = request.query_params.get('client_id')
@@ -410,8 +375,6 @@ cors_config = CORSConfig(
 app = Litestar(
     route_handlers=[
         register_device,
-        get_preferences,
-        update_preferences,
         get_all_mac_addresses,
         get_username,
         get_credentials,
