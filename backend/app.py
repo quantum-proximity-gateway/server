@@ -24,21 +24,23 @@ from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.types import JSON
 from typing import Annotated, Any
 from litestar.datastructures import UploadFile
-from github import Github, GithubException
 from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
 from video_encoding import convert_to_mp4, split_frames
 from train_model import train_model
+from aesgcm_encryption import aesgcm_encrypt, aesgcm_decrypt
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
-aes_key = os.environ.get('AES_KEY')
+AES_KEY = os.environ.get('AES_KEY')
 
-if aes_key is None: # Set AES_KEY for database if not set
-    aes_key = os.urandom(32)
+if AES_KEY is None: # Set AES_KEY for database if not set
+    AES_KEY = os.urandom(32)
     with open('.env', 'a') as f:
-        f.write(f'\nAES_KEY={aes_key.hex()}')
+        f.write(f'\nAES_KEY={AES_KEY.hex()}')
+else:
+    AES_KEY = bytes.fromhex(AES_KEY)
 
 json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
 with open(json_path, 'r') as f:
@@ -57,6 +59,7 @@ class Device(Base):
     mac_address: Mapped[str] = mapped_column(primary_key=True)
     username: Mapped[str]
     password: Mapped[str]
+    nonce: Mapped[str]
     secret: Mapped[str] # Shared secret used in TOTP, maybe encrypt?
     totp_timestamp: Mapped[int]
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
@@ -186,11 +189,12 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         raise HTTPException(status_code=409, detail='Device already registered')
     
     # TODO: Need to think of a way to encrypt the password on the db
-
+    (nonce_b64, ciphertext_b64) = aesgcm_encrypt(validated_data.password, AES_KEY)
     device = Device(
         mac_address=validated_data.mac_address.strip(),
         username=validated_data.username,
-        password=validated_data.password,
+        password= ciphertext_b64,
+        nonce=nonce_b64,
         secret=validated_data.secret,
         totp_timestamp= int(validated_data.timestamp/1000) # JavaScript Date.now() uses ms
     )
