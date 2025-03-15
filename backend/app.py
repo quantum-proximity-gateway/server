@@ -188,7 +188,6 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
     
-    # TODO: Need to think of a way to encrypt the password on the db
     (nonce_b64, ciphertext_b64) = aesgcm_encrypt(validated_data.password, AES_KEY)
     device = Device(
         mac_address=validated_data.mac_address.strip(),
@@ -267,14 +266,16 @@ async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSessi
     validated_data = CredentialsRequest(**decrypted_data)
     check_totp = await generate_totp(validated_data.mac_address, transaction)
     if validated_data.totp == check_totp:
-        query = select(Device.username, Device.password).where(Device.mac_address == validated_data.mac_address)
+        query = select(Device.username, Device.password, Device.nonce).where(Device.mac_address == validated_data.mac_address)
 
         result = await transaction.execute(query)
         credentials = result.one_or_none()
         if not credentials:
             raise HTTPException(status_code=404, detail="Device not found.")
 
-        username, password = credentials
+        username, ciphertext, nonce = credentials
+        password = aesgcm_decrypt(nonce, ciphertext, AES_KEY)
+
         credential_data = {'username': username, 'password': password}
         encrypted_data = encryption_helper.encrypt_msg(credential_data, data.client_id)
         return encrypted_data
