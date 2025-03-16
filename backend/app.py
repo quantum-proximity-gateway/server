@@ -24,14 +24,23 @@ from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.types import JSON
 from typing import Annotated, Any
 from litestar.datastructures import UploadFile
-from github import Github, GithubException
 from dotenv import load_dotenv
 from copy import deepcopy
 from encryption_helper import EncryptionHelper
 from video_encoding import convert_to_mp4, split_frames
 from train_model import train_model
+from aesgcm_encryption import aesgcm_encrypt, aesgcm_decrypt
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+AES_KEY = os.environ.get('AES_KEY')
+
+if AES_KEY is None: # Set AES_KEY for database if not set
+    AES_KEY = os.urandom(32)
+    with open('.env', 'a') as f:
+        f.write(f'\nAES_KEY={AES_KEY.hex()}')
+else:
+    AES_KEY = bytes.fromhex(AES_KEY)
 
 json_path = os.path.join(os.path.dirname(__file__), 'json_example.json')
 with open(json_path, 'r') as f:
@@ -50,6 +59,7 @@ class Device(Base):
     mac_address: Mapped[str] = mapped_column(primary_key=True)
     username: Mapped[str]
     password: Mapped[str]
+    nonce: Mapped[str]
     secret: Mapped[str] # Shared secret used in TOTP, maybe encrypt?
     totp_timestamp: Mapped[int]
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
@@ -147,22 +157,6 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     username = result.scalar_one_or_none()
     return username
 
-@get('/devices')
-async def get_devices(request: Request, transaction: AsyncSession) -> dict:
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
-    
-    query = select(Device)
-    result = await transaction.execute(query)
-    devices = result.scalars().all()
-
-    serialized_devices = [device.__dict__ for device in devices]
-    for device in serialized_devices:
-        device.pop('_sa_instance_state', None)
-    
-    return encryption_helper.encrypt_msg({'devices': serialized_devices}, client_id)
-
 @post('/register')
 async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> None:
     if not data.client_id:
@@ -178,12 +172,12 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     if existing_device:
         raise HTTPException(status_code=409, detail='Device already registered')
     
-    # TODO: Need to think of a way to encrypt the password on the db
-
+    (nonce_b64, ciphertext_b64) = aesgcm_encrypt(validated_data.password, AES_KEY)
     device = Device(
         mac_address=validated_data.mac_address.strip(),
         username=validated_data.username,
-        password=validated_data.password,
+        password= ciphertext_b64,
+        nonce=nonce_b64,
         secret=validated_data.secret,
         totp_timestamp= int(validated_data.timestamp/1000) # JavaScript Date.now() uses ms
     )
@@ -192,41 +186,6 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     except:
         raise HTTPException(status_code=400, detail='Device already registered')
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
-
-
-@get('/devices/{mac_address:str}/preferences')
-async def get_preferences(request: Request, mac_address: str, transaction: AsyncSession) -> dict:
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail='client_id query parameter is required')
-
-    query = select(Device).where(Device.mac_address == mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-
-    if not device:
-        raise HTTPException(status_code=404, detail='Device not found')
-    
-    try:
-        parsed_preferences = json.loads(device.preferences)
-        return encryption_helper.encrypt_msg({'preferences': parsed_preferences}, client_id)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
-
-
-@put('/devices/{mac_address:str}/preferences')
-async def update_preferences(mac_address: str, data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
-    if not data.client_id:
-        raise HTTPException(status_code=400, detail='client_id parameter is required')
-    decryped_data = encryption_helper.decrypt_msg(data)
-    validated_data = UpdatePreferencesRequest(**decryped_data)
-    query = select(Device).where(Device.mac_address == mac_address)
-    result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
-    if not device:
-        raise HTTPException(status_code=404, detail='Device not found')
-
-    return encryption_helper.encrypt_msg({'status': 'success', 'preferences': validated_data.preferences}, data.client_id)
 
 @get('/devices/all-mac-addresses')
 async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
@@ -256,14 +215,16 @@ async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSessi
     validated_data = CredentialsRequest(**decrypted_data)
     check_totp = await generate_totp(validated_data.mac_address, transaction)
     if validated_data.totp == check_totp:
-        query = select(Device.username, Device.password).where(Device.mac_address == validated_data.mac_address)
+        query = select(Device.username, Device.password, Device.nonce).where(Device.mac_address == validated_data.mac_address)
 
         result = await transaction.execute(query)
         credentials = result.one_or_none()
         if not credentials:
             raise HTTPException(status_code=404, detail="Device not found.")
 
-        username, password = credentials
+        username, ciphertext, nonce = credentials
+        password = aesgcm_decrypt(nonce, ciphertext, AES_KEY)
+
         credential_data = {'username': username, 'password': password}
         encrypted_data = encryption_helper.encrypt_msg(credential_data, data.client_id)
         return encrypted_data
@@ -302,16 +263,15 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
     
-    query = select(Device).where(Device.username == username)
+    query = select(Device.preferences).where(Device.username == username)
     result = await transaction.execute(query)
-    device = result.scalar_one_or_none()
+    preferences = result.scalar_one_or_none()
 
-    if not device:
+    if not preferences:
         raise HTTPException(status_code=404, detail='Username not found')
     
     try:
-        parsed_preferences = device.preferences
-        return encryption_helper.encrypt_msg({'preferences': parsed_preferences},client_id)
+        return encryption_helper.encrypt_msg({'preferences': preferences},client_id)
     except Exception as e:
        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
@@ -414,8 +374,6 @@ cors_config = CORSConfig(
 app = Litestar(
     route_handlers=[
         register_device,
-        get_preferences,
-        update_preferences,
         get_all_mac_addresses,
         get_username,
         get_credentials,
