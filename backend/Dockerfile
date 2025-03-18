@@ -87,6 +87,8 @@ RUN pipenv run pip install --no-cache-dir opencv-python-headless imutils face-re
 # Copy the rest of the application
 COPY . .
 
+RUN rm -rf db.sqlite
+
 # Ensure correct user permissions
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
