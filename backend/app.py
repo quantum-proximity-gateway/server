@@ -10,7 +10,7 @@ import hashlib
 import numpy as np
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
-from litestar import Litestar, get, post, Request, put
+from litestar import Litestar, get, post, Request, put, delete
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
 from litestar.config.cors import CORSConfig
 from litestar.enums import RequestEncodingType
@@ -108,6 +108,9 @@ class UpdateJSONPreferencesRequest(BaseModel):
 class CredentialsRequest(BaseModel):
     mac_address: str
     totp: int
+
+class DeleteDeviceRequest(BaseModel):
+    mac_address: str
 
 async def generate_totp(mac_address: str ,transaction: AsyncSession) -> int:
     query = select(Device.secret, Device.totp_timestamp).where(Device.mac_address == mac_address)
@@ -351,6 +354,22 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     return {'status': 'success'}
 
+@delete("/devices/delete")
+async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+    decrypted_data = encryption_helper.decrypt_msg(data)
+    validated_data = DeleteDeviceRequest(**decrypted_data)
+
+    query = select(Device).where(Device.mac_address == validated_data.mac_address.strip())
+    result = await transaction.execute(query)
+    device = result.scalar_one_or_none()
+
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    await transaction.delete(device)
+
+    return {'status': 'success'}
+
 TEST = False
 if TEST:
     filename = 'test_db.sqlite'
@@ -382,7 +401,8 @@ app = Litestar(
         update_json_preferences,
         kem_complete,
         kem_initiate,
-        get_encodings
+        get_encodings,
+        delete_device
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
