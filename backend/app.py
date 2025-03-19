@@ -370,13 +370,6 @@ async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession
 
     return {'status': 'success'}
 
-@get('/devices/all-data')
-async def get_all_data(transaction: AsyncSession) -> dict:
-    query = select(Device)
-    result = await transaction.execute(query)
-    devices = result.scalars().all()
-    return devices
-
 TEST = False
 if TEST:
     filename = 'test_db.sqlite'
@@ -409,8 +402,7 @@ app = Litestar(
         kem_complete,
         kem_initiate,
         get_encodings,
-        delete_device,
-        get_all_data
+        delete_device
     ],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
