@@ -386,7 +386,7 @@ sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 
 cors_config = CORSConfig(
     allow_origins=['*'], 
-    allow_methods=['GET', 'POST', 'PUT'],  # Allow specific HTTP methods
+    allow_methods=['GET', 'POST', 'PUT', 'DELETE'],  # Allow specific HTTP methods
     allow_headers=['*']
 )
 
