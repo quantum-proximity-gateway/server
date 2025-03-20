@@ -161,7 +161,7 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @post('/register')
-async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> None:
+async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     if not data.client_id:
         raise HTTPException(status_code=400, detail='client_id parameter is required')
     client_id = data.client_id
@@ -191,7 +191,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
 @get('/devices/all-mac-addresses')
-async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
+async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> dict:
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -354,7 +354,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     return {'status': 'success'}
 
-@delete("/devices/delete")
+@delete("/devices/delete", status_code=202)
 async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = DeleteDeviceRequest(**decrypted_data)
@@ -386,7 +386,7 @@ sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 
 cors_config = CORSConfig(
     allow_origins=['*'], 
-    allow_methods=['GET', 'POST', 'PUT'],  # Allow specific HTTP methods
+    allow_methods=['GET', 'POST', 'PUT', 'DELETE'],  # Allow specific HTTP methods
     allow_headers=['*']
 )
 

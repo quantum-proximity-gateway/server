@@ -1,4 +1,31 @@
+FROM python:3.9-slim AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    git \
+    cmake \
+    ninja-build \
+    build-essential \
+    libssl-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+
+RUN git clone --depth=1 --branch main https://github.com/open-quantum-safe/liboqs.git
+
+WORKDIR /opt/liboqs
+RUN mkdir build && cd build && \
+    cmake -GNinja \
+    -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+    ninja && \
+    ninja install
+
+
 FROM python:3.9-slim
+
+COPY --from=builder /usr/local /usr/local
+ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
 # Set up a working directory
 WORKDIR /app
@@ -86,6 +113,8 @@ RUN pipenv run pip install --no-cache-dir opencv-python-headless imutils face-re
 
 # Copy the rest of the application
 COPY . .
+
+RUN rm -rf db.sqlite
 
 # Ensure correct user permissions
 RUN useradd -m appuser && chown -R appuser:appuser /app
