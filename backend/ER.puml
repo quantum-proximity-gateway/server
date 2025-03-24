@@ -1,0 +1,59 @@
+@startuml Database Schema
+
+!theme cerulean-outline
+skinparam backgroundColor transparent
+skinparam handwritten false
+
+' Set IBM Plex Sans as the font family
+skinparam defaultFontName "IBM Plex Sans"
+skinparam classFontName "IBM Plex Sans"
+skinparam noteFontName "IBM Plex Sans"
+skinparam arrowFontName "IBM Plex Sans"
+
+skinparam ClassBackgroundColor #f5f5f5
+skinparam ClassBorderColor #000000
+skinparam ClassBorderThickness 2
+skinparam ClassFontSize 13
+skinparam ClassFontStyle bold
+skinparam NoteBackgroundColor #f5fffa
+skinparam NoteBorderColor #2ecc71
+
+' Use modern arrow style
+skinparam ArrowColor #000000
+skinparam ArrowThickness 2
+
+' Round corners for all elements
+skinparam roundCorner 10
+
+class Device {
+  +mac_address: str <<PK>>
+  +username: str <<unique>>
+}
+
+class Authentication {
+  +mac_address: str <<PK>> <<FK>>
+  +password: str
+  +nonce: str
+  +secret: str
+  +totp_timestamp: int
+}
+
+class Preferences {
+  +mac_address: str <<PK>> <<FK>>
+  +preferences: JSON
+}
+
+Device "1" --|> "1" Authentication : has >
+Device "1" --|> "1" Preferences : has >
+
+note right of Preferences
+  Stores JSON preferences
+  with default values
+end note
+
+note right of Authentication
+  Stores encrypted credentials
+  and TOTP information
+end note
+
+@enduml
