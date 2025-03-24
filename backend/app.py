@@ -399,6 +399,7 @@ async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    # Due to cascade="all, delete-orphan", this will automatically delete related authentication and preferences
     await transaction.delete(device)
 
     return {'status': 'success'}
