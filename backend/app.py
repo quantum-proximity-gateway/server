@@ -251,7 +251,9 @@ async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSessi
     validated_data = CredentialsRequest(**decrypted_data)
     check_totp = await generate_totp(validated_data.mac_address, transaction)
     if validated_data.totp == check_totp:
-        query = select(Device.username, Device.password, Device.nonce).where(Device.mac_address == validated_data.mac_address)
+        query = select(Device.username, Authentication.password, Authentication.nonce).join(
+            Authentication, Device.mac_address == Authentication.mac_address
+        ).where(Device.mac_address == validated_data.mac_address)
 
         result = await transaction.execute(query)
         credentials = result.one_or_none()
@@ -265,8 +267,6 @@ async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSessi
         encrypted_data = encryption_helper.encrypt_msg(credential_data, data.client_id)
         return encrypted_data
     else:
-        print("Generated:", check_totp)
-        print("Received TOTP:", validated_data.totp)
         raise HTTPException(status_code=500, detail='TOTP does not match')
 
 
@@ -279,7 +279,7 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = UpdateJSONPreferencesRequest(**decrypted_data)
 
-    query = select(Device).where(Device.username == validated_data.username)
+    query = select(Device).join(Preferences).where(Device.username == validated_data.username)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
 
@@ -287,7 +287,7 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
         raise HTTPException(status_code=404, detail='Device not found')
 
     try:
-        device.preferences = validated_data.preferences
+        device.preferences.preferences = validated_data.preferences
         await transaction.commit()
         return encryption_helper.encrypt_msg({'preferences': validated_data.preferences}, client_id)
     except Exception as e:
@@ -299,7 +299,7 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
     
-    query = select(Device.preferences).where(Device.username == username)
+    query = select(Preferences.preferences).join(Device).where(Device.username == username)
     result = await transaction.execute(query)
     preferences = result.scalar_one_or_none()
 
@@ -307,7 +307,7 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
         raise HTTPException(status_code=404, detail='Username not found')
     
     try:
-        return encryption_helper.encrypt_msg({'preferences': preferences},client_id)
+        return encryption_helper.encrypt_msg({'preferences': preferences}, client_id)
     except Exception as e:
        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
