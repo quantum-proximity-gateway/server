@@ -58,7 +58,11 @@ class Device(Base):
     
     mac_address: Mapped[str] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(unique=True)
-    # Add other device-specific fields
+    # Add relationships for cascade deletion
+    authentication: Mapped["Authentication"] = relationship("Authentication", back_populates="device", 
+                                                          cascade="all, delete-orphan", uselist=False)
+    preferences: Mapped["Preferences"] = relationship("Preferences", back_populates="device", 
+                                                    cascade="all, delete-orphan", uselist=False)
 
 class Authentication(Base):
     __tablename__ = 'authentication'
@@ -178,7 +182,7 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @post('/register')
-async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> None:
+async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     if not data.client_id:
         raise HTTPException(status_code=400, detail='client_id parameter is required')
     client_id = data.client_id
@@ -287,11 +291,18 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
         raise HTTPException(status_code=404, detail='Device not found')
 
     try:
-        device.preferences.preferences = validated_data.preferences
+        query = select(Preferences).join(Device).where(Device.username == validated_data.username)
+        result = await transaction.execute(query)
+        preferences = result.scalar_one_or_none()
+        
+        if not preferences:
+            raise HTTPException(status_code=404, detail='Device preferences not found')
+            
+        preferences.preferences = validated_data.preferences
         await transaction.commit()
         return encryption_helper.encrypt_msg({'preferences': validated_data.preferences}, client_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail='Failed to update preferences')
+        raise HTTPException(status_code=500, detail=f'Failed to update preferences: {str(e)}')
 
 @get('/preferences/{username:str}')
 async def get_json_preferences(request: Request, username: str, transaction: AsyncSession) -> dict:
@@ -357,7 +368,6 @@ async def kem_complete(data: KEMCompleteRequest) -> dict:
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
     mac_address = data.mac_address
     logging.info(f"Received mac_address: {mac_address}")
-    #TODO: Add check to see if face already registered
     username = await fetch_username(mac_address, transaction) # To be used as folder name
     script_dir = os.path.dirname(__file__)  # Get the directory of the current script
     user_video_dir = os.path.join(script_dir, "videos", username)
@@ -387,7 +397,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     return {'status': 'success'}
 
-@delete("/devices/delete")
+@delete("/devices/delete", status_code=200)
 async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = DeleteDeviceRequest(**decrypted_data)
