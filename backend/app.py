@@ -129,8 +129,8 @@ class CredentialsRequest(BaseModel):
 class DeleteDeviceRequest(BaseModel):
     mac_address: str
 
-async def generate_totp(mac_address: str ,transaction: AsyncSession) -> int:
-    query = select(Device.secret, Device.totp_timestamp).where(Device.mac_address == mac_address)
+async def generate_totp(mac_address: str, transaction: AsyncSession) -> int:
+    query = select(Authentication.secret, Authentication.totp_timestamp).where(Authentication.mac_address == mac_address)
     result = await transaction.execute(query)
     results = result.one_or_none()
     if not results:
