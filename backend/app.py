@@ -193,18 +193,34 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         raise HTTPException(status_code=409, detail='Device already registered')
     
     (nonce_b64, ciphertext_b64) = aesgcm_encrypt(validated_data.password, AES_KEY)
+    
+    # Create device first
     device = Device(
         mac_address=validated_data.mac_address.strip(),
         username=validated_data.username,
-        password= ciphertext_b64,
+    )
+    
+    # Create authentication
+    authentication = Authentication(
+        mac_address=validated_data.mac_address.strip(),
+        password=ciphertext_b64,
         nonce=nonce_b64,
         secret=validated_data.secret,
-        totp_timestamp= int(validated_data.timestamp/1000) # JavaScript Date.now() uses ms
+        totp_timestamp=int(validated_data.timestamp/1000)  # JavaScript Date.now() uses ms
     )
+    
+    # Create preferences
+    preferences = Preferences(
+        mac_address=validated_data.mac_address.strip(),
+    )
+    
     try:
         transaction.add(device)
-    except:
-        raise HTTPException(status_code=400, detail='Device already registered')
+        transaction.add(authentication)
+        transaction.add(preferences)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'Device registration failed: {str(e)}')
+        
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
 @get('/devices/all-mac-addresses')
