@@ -17,8 +17,8 @@ from litestar.enums import RequestEncodingType
 from litestar.params import Body
 from litestar.exceptions import HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import select, ForeignKey
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.types import JSON
@@ -55,18 +55,35 @@ class Base(DeclarativeBase):
 
 class Device(Base):
     __tablename__ = 'devices'
-
+    
     mac_address: Mapped[str] = mapped_column(primary_key=True)
-    username: Mapped[str]
+    username: Mapped[str] = mapped_column(unique=True)
+    # Add other device-specific fields
+
+class Authentication(Base):
+    __tablename__ = 'authentication'
+    
+    mac_address: Mapped[str] = mapped_column(ForeignKey("devices.mac_address"), primary_key=True)
     password: Mapped[str]
     nonce: Mapped[str]
-    secret: Mapped[str] # Shared secret used in TOTP, maybe encrypt?
+    secret: Mapped[str]
     totp_timestamp: Mapped[int]
+    
+    # Relationship
+    device: Mapped["Device"] = relationship("Device", back_populates="authentication")
+
+class Preferences(Base):
+    __tablename__ = 'preferences'
+    
+    mac_address: Mapped[str] = mapped_column(ForeignKey("devices.mac_address"), primary_key=True)
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
         MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
         nullable=False
     )
+    
+    # Relationship
+    device: Mapped["Device"] = relationship("Device", back_populates="preferences")
 
 
 class RegisterDeviceRequest(BaseModel):
@@ -161,7 +178,7 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     return username
 
 @post('/register')
-async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
+async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> None:
     if not data.client_id:
         raise HTTPException(status_code=400, detail='client_id parameter is required')
     client_id = data.client_id
@@ -191,7 +208,7 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
 @get('/devices/all-mac-addresses')
-async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> dict:
+async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -354,7 +371,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     return {'status': 'success'}
 
-@delete("/devices/delete", status_code=202)
+@delete("/devices/delete")
 async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = DeleteDeviceRequest(**decrypted_data)
@@ -386,7 +403,7 @@ sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 
 cors_config = CORSConfig(
     allow_origins=['*'], 
-    allow_methods=['GET', 'POST', 'PUT', 'DELETE'],  # Allow specific HTTP methods
+    allow_methods=['GET', 'POST', 'PUT'],  # Allow specific HTTP methods
     allow_headers=['*']
 )
 
