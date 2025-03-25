@@ -17,8 +17,8 @@ from litestar.enums import RequestEncodingType
 from litestar.params import Body
 from litestar.exceptions import HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import select, ForeignKey
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.types import JSON
@@ -55,18 +55,39 @@ class Base(DeclarativeBase):
 
 class Device(Base):
     __tablename__ = 'devices'
-
+    
     mac_address: Mapped[str] = mapped_column(primary_key=True)
-    username: Mapped[str]
+    username: Mapped[str] = mapped_column(unique=True)
+    # Add relationships for cascade deletion
+    authentication: Mapped["Authentication"] = relationship("Authentication", back_populates="device", 
+                                                          cascade="all, delete-orphan", uselist=False)
+    preferences: Mapped["Preferences"] = relationship("Preferences", back_populates="device", 
+                                                    cascade="all, delete-orphan", uselist=False)
+
+class Authentication(Base):
+    __tablename__ = 'authentication'
+    
+    mac_address: Mapped[str] = mapped_column(ForeignKey("devices.mac_address"), primary_key=True)
     password: Mapped[str]
     nonce: Mapped[str]
-    secret: Mapped[str] # Shared secret used in TOTP, maybe encrypt?
+    secret: Mapped[str]
     totp_timestamp: Mapped[int]
+    
+    # Relationship
+    device: Mapped["Device"] = relationship("Device", back_populates="authentication")
+
+class Preferences(Base):
+    __tablename__ = 'preferences'
+    
+    mac_address: Mapped[str] = mapped_column(ForeignKey("devices.mac_address"), primary_key=True)
     preferences: Mapped[MutableDict[str, Any]] = mapped_column(
         MutableDict.as_mutable(JSON),
         default=lambda: deepcopy(DEFAULT_PREFS),
         nullable=False
     )
+    
+    # Relationship
+    device: Mapped["Device"] = relationship("Device", back_populates="preferences")
 
 
 class RegisterDeviceRequest(BaseModel):
@@ -112,8 +133,8 @@ class CredentialsRequest(BaseModel):
 class DeleteDeviceRequest(BaseModel):
     mac_address: str
 
-async def generate_totp(mac_address: str ,transaction: AsyncSession) -> int:
-    query = select(Device.secret, Device.totp_timestamp).where(Device.mac_address == mac_address)
+async def generate_totp(mac_address: str, transaction: AsyncSession) -> int:
+    query = select(Authentication.secret, Authentication.totp_timestamp).where(Authentication.mac_address == mac_address)
     result = await transaction.execute(query)
     results = result.one_or_none()
     if not results:
@@ -176,22 +197,38 @@ async def register_device(data: EncryptedMessageRequest, transaction: AsyncSessi
         raise HTTPException(status_code=409, detail='Device already registered')
     
     (nonce_b64, ciphertext_b64) = aesgcm_encrypt(validated_data.password, AES_KEY)
+    
+    # Create device first
     device = Device(
         mac_address=validated_data.mac_address.strip(),
         username=validated_data.username,
-        password= ciphertext_b64,
+    )
+    
+    # Create authentication
+    authentication = Authentication(
+        mac_address=validated_data.mac_address.strip(),
+        password=ciphertext_b64,
         nonce=nonce_b64,
         secret=validated_data.secret,
-        totp_timestamp= int(validated_data.timestamp/1000) # JavaScript Date.now() uses ms
+        totp_timestamp=int(validated_data.timestamp/1000)  # JavaScript Date.now() uses ms
     )
+    
+    # Create preferences
+    preferences = Preferences(
+        mac_address=validated_data.mac_address.strip(),
+    )
+    
     try:
         transaction.add(device)
-    except:
-        raise HTTPException(status_code=400, detail='Device already registered')
+        transaction.add(authentication)
+        transaction.add(preferences)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'Device registration failed: {str(e)}')
+        
     return encryption_helper.encrypt_msg({'status_code': 201, 'status': 'success'}, client_id)
 
 @get('/devices/all-mac-addresses')
-async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> dict:
+async def get_all_mac_addresses(request: Request, transaction: AsyncSession) -> list[str]:
     client_id = request.query_params.get('client_id')
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
@@ -218,7 +255,9 @@ async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSessi
     validated_data = CredentialsRequest(**decrypted_data)
     check_totp = await generate_totp(validated_data.mac_address, transaction)
     if validated_data.totp == check_totp:
-        query = select(Device.username, Device.password, Device.nonce).where(Device.mac_address == validated_data.mac_address)
+        query = select(Device.username, Authentication.password, Authentication.nonce).join(
+            Authentication, Device.mac_address == Authentication.mac_address
+        ).where(Device.mac_address == validated_data.mac_address)
 
         result = await transaction.execute(query)
         credentials = result.one_or_none()
@@ -232,8 +271,6 @@ async def get_credentials(data: EncryptedMessageRequest, transaction: AsyncSessi
         encrypted_data = encryption_helper.encrypt_msg(credential_data, data.client_id)
         return encrypted_data
     else:
-        print("Generated:", check_totp)
-        print("Received TOTP:", validated_data.totp)
         raise HTTPException(status_code=500, detail='TOTP does not match')
 
 
@@ -246,7 +283,7 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = UpdateJSONPreferencesRequest(**decrypted_data)
 
-    query = select(Device).where(Device.username == validated_data.username)
+    query = select(Device).join(Preferences).where(Device.username == validated_data.username)
     result = await transaction.execute(query)
     device = result.scalar_one_or_none()
 
@@ -254,11 +291,18 @@ async def update_json_preferences(data: EncryptedMessageRequest, transaction: As
         raise HTTPException(status_code=404, detail='Device not found')
 
     try:
-        device.preferences = validated_data.preferences
+        query = select(Preferences).join(Device).where(Device.username == validated_data.username)
+        result = await transaction.execute(query)
+        preferences = result.scalar_one_or_none()
+        
+        if not preferences:
+            raise HTTPException(status_code=404, detail='Device preferences not found')
+            
+        preferences.preferences = validated_data.preferences
         await transaction.commit()
         return encryption_helper.encrypt_msg({'preferences': validated_data.preferences}, client_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail='Failed to update preferences')
+        raise HTTPException(status_code=500, detail=f'Failed to update preferences: {str(e)}')
 
 @get('/preferences/{username:str}')
 async def get_json_preferences(request: Request, username: str, transaction: AsyncSession) -> dict:
@@ -266,7 +310,7 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
     if not client_id:
         raise HTTPException(status_code=400, detail='client_id query parameter is required')
     
-    query = select(Device.preferences).where(Device.username == username)
+    query = select(Preferences.preferences).join(Device).where(Device.username == username)
     result = await transaction.execute(query)
     preferences = result.scalar_one_or_none()
 
@@ -274,7 +318,7 @@ async def get_json_preferences(request: Request, username: str, transaction: Asy
         raise HTTPException(status_code=404, detail='Username not found')
     
     try:
-        return encryption_helper.encrypt_msg({'preferences': preferences},client_id)
+        return encryption_helper.encrypt_msg({'preferences': preferences}, client_id)
     except Exception as e:
        raise HTTPException(status_code=500, detail='Preferences are not a valid JSON')
 
@@ -324,7 +368,6 @@ async def kem_complete(data: KEMCompleteRequest) -> dict:
 async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type=RequestEncodingType.MULTI_PART)], transaction: AsyncSession) -> dict:
     mac_address = data.mac_address
     logging.info(f"Received mac_address: {mac_address}")
-    #TODO: Add check to see if face already registered
     username = await fetch_username(mac_address, transaction) # To be used as folder name
     script_dir = os.path.dirname(__file__)  # Get the directory of the current script
     user_video_dir = os.path.join(script_dir, "videos", username)
@@ -354,7 +397,7 @@ async def register_face(data: Annotated[FaceRegistrationRequest, Body(media_type
 
     return {'status': 'success'}
 
-@delete("/devices/delete", status_code=202)
+@delete("/devices/delete", status_code=200)
 async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     decrypted_data = encryption_helper.decrypt_msg(data)
     validated_data = DeleteDeviceRequest(**decrypted_data)
@@ -366,6 +409,7 @@ async def delete_device(data: EncryptedMessageRequest, transaction: AsyncSession
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    # Due to cascade="all, delete-orphan", this will automatically delete related authentication and preferences
     await transaction.delete(device)
 
     return {'status': 'success'}
@@ -386,7 +430,7 @@ sqlalchemy_plugin = SQLAlchemyPlugin(config=db_config)
 
 cors_config = CORSConfig(
     allow_origins=['*'], 
-    allow_methods=['GET', 'POST', 'PUT', 'DELETE'],  # Allow specific HTTP methods
+    allow_methods=['GET', 'POST', 'PUT'],  # Allow specific HTTP methods
     allow_headers=['*']
 )
 
