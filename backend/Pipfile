@@ -76,6 +76,8 @@ face-recognition-models = {git = "https://github.com/ageitgey/face_recognition_m
 setuptools = "*"
 exceptiongroup = "*"
 importlib-metadata = "*"
+pytest = "*"
+pytest-asyncio = "*"
 
 [dev-packages]
 

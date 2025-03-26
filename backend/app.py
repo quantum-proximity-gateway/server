@@ -160,6 +160,10 @@ async def fetch_username(mac_address: str, transaction: AsyncSession) -> str:
     username = result.scalar_one_or_none()
     return username
 
+@get('/')
+async def home() -> dict:
+    return {'status': 'success'}
+
 @post('/register')
 async def register_device(data: EncryptedMessageRequest, transaction: AsyncSession) -> dict:
     if not data.client_id:
@@ -392,6 +396,7 @@ cors_config = CORSConfig(
 
 app = Litestar(
     route_handlers=[
+        home,
         register_device,
         get_all_mac_addresses,
         get_username,

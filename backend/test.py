@@ -31,6 +31,12 @@ async def test_client() -> AsyncIterator[AsyncTestClient[Litestar]]:
     os.remove(TEST_DB_FILENAME)
 
 @pytest.mark.asyncio
+async def test_home(test_client: AsyncTestClient[Litestar]) -> None:
+    response = await test_client.get('/')
+    assert response.status_code == 200
+    assert response.json() == {'status': 'success'}
+
+@pytest.mark.asyncio
 async def test_get_devices(test_client: AsyncTestClient[Litestar]) -> None:
     # Ensure no devices are returned when none have been registered yet
     response = await test_client.get(f'/devices?client_id={TEST_CLIENT_ID_1}')

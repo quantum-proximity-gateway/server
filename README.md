@@ -19,7 +19,7 @@ This server is already deployed, so the instructions below are just in case you 
 
 There are 2 ways of running this server locally:
 
-1) Via **Docker** - the server will run locally, but you will not be able to change the code. This method is extremely easy and it is unlikely to have failing dependency problems.
+1) Via **Docker** - the server will run locally, but you will not be able to change the code. This method is extremely easy, is unlikely to have failing dependency problems, and also runs much quicker since liboqs doesn't need to be re-compiled.
 
 2) Via **Python** as a litestar application - the server will run locally and you will need to change the code.
 
@@ -72,7 +72,7 @@ pipenv shell
 litestar run --host 0.0.0.0 --port 8000
 ```
 
-> NOTE: You can check if the server is running by trying to access `http://localhost:8000` in a browser. If you see {"status_code":404,"detail":"Not Found"} on the screen, the server is running.
+> NOTE: You can check if the server is running by trying to access `http://localhost:8000` in a browser. If you see {"status":"success"} on the screen, the server is running.
 
 ## Misc.
 
