@@ -74,6 +74,10 @@ wrapt = "==1.17.2"
 numpy = "<2"
 face-recognition-models = {git = "https://github.com/ageitgey/face_recognition_models"}
 setuptools = "*"
+exceptiongroup = "*"
+importlib-metadata = "*"
+pytest = "*"
+pytest-asyncio = "*"
 
 [dev-packages]
 
