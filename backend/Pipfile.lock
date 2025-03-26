@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "9e846fd48a6e483ec84db308db1338dd7c09407fd6fcca98406143c32c031468"
+            "sha256": "adc73bddf15a247914020f11a82ad391acbcf5be26eab29b0ef22eddddcd303b"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -332,6 +332,15 @@
             "index": "pypi",
             "version": "==0.17.0"
         },
+        "exceptiongroup": {
+            "hashes": [
+                "sha256:3111b9d131c238bec2f8f516e123e14ba243563fb135d3fe885990585aa7795b",
+                "sha256:47c2edf7c6738fafb49fd34290706d1a1a2f4d1c6df275526b62cbb4aa5393cc"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.7'",
+            "version": "==1.2.2"
+        },
         "face-recognition-models": {
             "git": "https://github.com/ageitgey/face_recognition_models",
             "ref": "e67de717267507d1e9246de95692eb8be736ab61"
@@ -550,6 +559,15 @@
             "index": "pypi",
             "markers": "python_version >= '3.6'",
             "version": "==3.10"
+        },
+        "importlib-metadata": {
+            "hashes": [
+                "sha256:02a89390c1e15fdfdc0d7c6b25cb3e62650d0494005c97d6f148bf5b9787525e",
+                "sha256:310b41d755445d74569f993ccfc22838295d9fe005425094fad953d7f15c8580"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.9'",
+            "version": "==8.6.1"
         },
         "imutils": {
             "hashes": [
@@ -1696,6 +1714,14 @@
             "index": "pypi",
             "markers": "python_version >= '3.8'",
             "version": "==1.17.2"
+        },
+        "zipp": {
+            "hashes": [
+                "sha256:2c9958f6430a2040341a52eb608ed6dd93ef4392e02ffe219417c1b28b5dd1f4",
+                "sha256:ac1bbe05fd2991f160ebce24ffbac5f6d11d83dc90891255885223d42b3cd931"
+            ],
+            "markers": "python_version >= '3.9'",
+            "version": "==3.21.0"
         }
     },
     "develop": {}
