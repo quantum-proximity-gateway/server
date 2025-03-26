@@ -15,8 +15,6 @@
 
 </details>
 
-<br />
-
 This server is already deployed, so the instructions below are just in case you want to run the server locally (or change the code yourself).
 
 There are 2 ways of running this server locally:
