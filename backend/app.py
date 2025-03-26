@@ -8,6 +8,9 @@ import hmac
 import pickle
 import hashlib
 import numpy as np
+from litestar.middleware import DefineMiddleware
+from performance import ProfilingMiddleware
+from memory_profiler import profile
 from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import autocommit_before_send_handler
 from collections.abc import AsyncGenerator
 from litestar import Litestar, get, post, Request, put, delete
@@ -404,6 +407,7 @@ app = Litestar(
         get_encodings,
         delete_device
     ],
+    middleware=[DefineMiddleware(ProfilingMiddleware)],
     dependencies={'transaction': provide_transaction},
     plugins=[sqlalchemy_plugin],
     cors_config=cors_config,
